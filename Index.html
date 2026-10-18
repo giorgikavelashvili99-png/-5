@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0d">
 <title>MOON AI</title>
-<script src="https://js.puter.com/v2/"></script>
 <style>
   :root {
     --bg: #0b0b0d;
@@ -48,38 +47,44 @@
   .icon:hover { color: var(--text); background: var(--surface2); }
   .icon:active { transform: scale(.94); }
 
-  /* მოდელის არჩევა */
-  .model { position: relative; }
-  .model select {
-    appearance: none; -webkit-appearance: none; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
-    color: var(--body); font: inherit; font-size: 13px; letter-spacing: .04em; padding: 8px 32px 8px 14px; outline: 0; cursor: pointer;
-    transition: border-color .2s, color .2s;
-  }
-  .model select:hover, .model select:focus-visible { border-color: var(--line2); color: var(--text); }
-  .model select option { background: #131316; color: #ececf0; }
-  .model svg { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; color: var(--muted); pointer-events: none; }
-  .powered { max-width: 740px; margin: 6px auto 0; text-align: center; font-size: 11px; color: var(--muted); opacity: .6; }
-  .powered a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line2); }
-  .powered a:hover { color: var(--text); }
-
   /* საუბარი */
   #chat { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 12px; }
   .wrap { max-width: 740px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px; min-height: 100%; }
 
-  .hero { margin: auto 0; padding: 4vh 0 2vh; animation: fade .6s var(--ease) both; }
-  .hero .eyebrow { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12.5px; letter-spacing: .3em; font-weight: 600; margin-bottom: 18px; }
-  .hero .eyebrow svg { width: 20px; height: 20px; }
-  .hero h1 { font-size: clamp(30px, 6.4vw, 46px); font-weight: 600; letter-spacing: -.015em; line-height: 1.15; }
-  .hero h1 span { color: var(--muted); font-weight: 500; }
-  .ideas { margin-top: 34px; border-top: 1px solid var(--line); }
-  .idea {
-    display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%;
-    padding: 16px 4px; border-bottom: 1px solid var(--line); text-align: left; font-size: 15.5px; color: var(--body);
-    transition: color .18s, padding .25s var(--ease);
+  /* მარცხენა პანელი: ბოლო საუბრები */
+  .hl { display: flex; align-items: center; gap: 10px; }
+  .scrim { position: fixed; inset: 0; background: rgba(0,0,0,.6); opacity: 0; pointer-events: none; transition: opacity .28s; z-index: 20; }
+  .scrim.show { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; bottom: 0; left: 0; width: min(340px, 86vw); z-index: 21;
+    background: var(--surface); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; padding-top: env(safe-area-inset-top);
+    transform: translate3d(-102%, 0, 0); visibility: hidden;
+    transition: transform .32s var(--ease), visibility 0s .32s;
   }
-  .idea svg { width: 16px; height: 16px; color: var(--muted); flex: none; transition: transform .25s var(--ease), color .18s; }
-  .idea:hover { color: var(--text); padding-left: 10px; }
-  .idea:hover svg { color: var(--accent); transform: translateX(4px); }
+  .drawer.open { transform: none; visibility: visible; transition: transform .32s var(--ease), visibility 0s; }
+  .drawer-h { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 6px 22px; }
+  .drawer-h .brand svg { width: 22px; height: 22px; }
+  .drawer-label { padding: 22px 24px 8px; font-size: 13px; color: var(--muted); letter-spacing: .06em; }
+  .recents { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 0 10px 110px; }
+  .rec { display: flex; align-items: center; border-radius: 14px; transition: background .18s; }
+  .rec:hover, .rec.active { background: var(--surface2); }
+  .rec .open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 13px 8px 13px 14px; text-align: left; color: var(--body); font-size: 15.5px; }
+  .rec .open svg { width: 18px; height: 18px; flex: none; color: var(--muted); }
+  .rec .open span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rec .del { width: 34px; height: 34px; margin-right: 6px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); opacity: 0; transition: opacity .18s, color .18s; flex: none; }
+  .rec .del svg { width: 16px; height: 16px; }
+  .rec:hover .del, .rec:focus-within .del { opacity: 1; }
+  .rec .del:hover { color: #ff8f9f; }
+  @media (hover: none) { .rec .del { opacity: .6; } }
+  .rec-empty { padding: 14px; font-size: 14px; color: var(--muted); line-height: 1.6; }
+  .newchat {
+    position: absolute; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); height: 54px; padding: 0 24px 0 20px;
+    border-radius: 999px; background: var(--text); color: #0b0b0d; display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 500;
+    box-shadow: 0 8px 28px rgba(0,0,0,.45); transition: transform .18s var(--ease);
+  }
+  .newchat svg { width: 20px; height: 20px; }
+  .newchat:active { transform: scale(.96); }
 
   .msg { animation: fade .3s var(--ease) both; }
   .msg.instant { animation: none; }
@@ -191,18 +196,12 @@
 <body>
 
 <header id="top">
-  <div class="brand">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5l8 9 8-9v14"/></svg>
-    <b>MOON AI</b>
-  </div>
-  <div class="model">
-    <select id="model" aria-label="მოდელი">
-      <option value="gemini-3.5-flash-lite">MOON 1.0</option>
-      <option value="gemini-3-flash-preview">MOON 2.0</option>
-      <option value="claude-sonnet-5">MOON 3.0</option>
-      <option value="openai/gpt-5.6-luna" selected>MOON 4.0</option>
-    </select>
-    <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <div class="hl">
+    <button class="icon" id="menu" aria-label="ბოლო საუბრები" aria-expanded="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5l8 9 8-9v14"/></svg>
+      <b>MOON AI</b>
+    </div>
   </div>
 </header>
 
@@ -218,26 +217,32 @@
     <button id="send" aria-label="გაგზავნა" disabled></button>
   </div>
   <div class="hint">MOON AI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია გადაამოწმე.</div>
-  <div class="powered"><a href="https://developer.puter.com" target="_blank" rel="noopener">Powered by Puter</a></div>
 </footer>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="ბოლო საუბრები">
+  <div class="drawer-h">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5l8 9 8-9v14"/></svg>
+      <b>MOON AI</b>
+    </div>
+    <button class="icon" id="closeDrawer" aria-label="დახურვა"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <div class="drawer-label">ბოლო საუბრები</div>
+  <div class="recents" id="recents"></div>
+  <button class="newchat" id="newChat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>ახალი საუბარი</button>
+</aside>
+
 
 <script>
 (function () {
-  // MOON 4.0 (OpenAI) იყენებს ინტერნეტ ძიებას, ამიტომ ახალ ინფორმაციას იცნობს. დანარჩენები უშუალოდ პასუხობენ.
-  const SEARCH_MODEL = "openai/gpt-5.6-luna";
+  // თუ Index.html სერვერისგან განცალკევებით ჰოსტდება (მაგ. GitHub Pages),
+  // ჩაწერე სერვერის მისამართი, მაგ: "https://შენი-სერვისი.onrender.com/api/chat"
+  const API_URL = "/api/chat";
 
-  const MARK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 9 8-9v14"/></svg>';
   const SEND_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
   const STOP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>';
   const COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>';
-  const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-
-  const IDEAS = [
-    "მოკლედ ამიხსენი, როგორ მუშაობს ინტერნეტი",
-    "დამეხმარე ბიზნეს იდეის გამოგონებაში",
-    "დამიწერე მოკლე ელფოსტა კლიენტისთვის",
-    "ახსენი JavaScript-ის ძირითადი ცნებები"
-  ];
 
   const chatEl = document.getElementById("chat");
   const wrap = document.getElementById("wrap");
@@ -245,19 +250,13 @@
   const sendBtn = document.getElementById("send");
   const topEl = document.getElementById("top");
   const jumpEl = document.getElementById("jump");
-  const modelEl = document.getElementById("model");
-  try {
-    const saved = localStorage.getItem("moon_ai_model");
-    if (saved && Array.from(modelEl.options).some(o => o.value === saved)) modelEl.value = saved;
-  } catch (e) {}
-  modelEl.addEventListener("change", () => { try { localStorage.setItem("moon_ai_model", modelEl.value); } catch (e) {} });
 
   let messages = [];
   let busy = false;
   let ctrl = null;
   let stick = true;
 
-  // საუბარი აღარ ინახება: გვერდის განახლებისას ყოველთვის სუფთა ჩატი იწყება (ძველ შენახულსაც ვშლით)
+  // გვერდის გახსნისას ყოველთვის სუფთა ფურცლით იწყება; ძველი საუბრები მარცხენა პანელშია
   try { localStorage.removeItem("moon_ai_history"); } catch (e) {}
 
   /*MD_START*/
@@ -340,25 +339,6 @@
     sendBtn.setAttribute("aria-label", busy ? "გაჩერება" : "გაგზავნა");
   }
 
-  function showHero() {
-    wrap.innerHTML = "";
-    const h = document.createElement("div");
-    h.className = "hero";
-    h.innerHTML = '<div class="eyebrow">' + MARK + 'MOON AI</div><h1>როგორ დაგეხმარო <span>დღეს?</span></h1>';
-    const list = document.createElement("div");
-    list.className = "ideas";
-    IDEAS.forEach(s => {
-      const b = document.createElement("button");
-      b.className = "idea";
-      b.innerHTML = "<span></span>" + ARROW;
-      b.firstChild.textContent = s;
-      b.addEventListener("click", () => { inputEl.value = s; send(); });
-      list.appendChild(b);
-    });
-    h.appendChild(list);
-    wrap.appendChild(h);
-  }
-
   function addUser(text, instant) {
     const el = document.createElement("div");
     el.className = "msg user" + (instant ? " instant" : "");
@@ -405,9 +385,132 @@
     setTimeout(() => { btn.textContent = "კოპირება"; }, 1500);
   });
 
+  // ---------- საუბრების ისტორია (ინახება მხოლოდ ამ ბრაუზერში) ----------
+  const STORE = "moon_ai_chats_v1";
+  const MAX_CHATS = 60, MAX_SAVED_MSGS = 120;
+  const BUBBLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';
+  const TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+  const drawerEl = document.getElementById("drawer");
+  const scrimEl = document.getElementById("scrim");
+  const recentsEl = document.getElementById("recents");
+  const menuBtn = document.getElementById("menu");
+  let chats = [];
+  let currentId = null;
+
+  function loadChats() {
+    try {
+      const a = JSON.parse(localStorage.getItem(STORE) || "[]");
+      chats = Array.isArray(a) ? a.filter(c => c && c.id && Array.isArray(c.messages) && c.messages.length) : [];
+    } catch (e) { chats = []; }
+  }
+  function persist() {
+    try { localStorage.setItem(STORE, JSON.stringify(chats)); }
+    catch (e) {
+      // ადგილი შეივსო: უძველესებს ვაცილებთ და ვცდით თავიდან
+      try { chats = chats.slice(0, Math.max(1, Math.floor(chats.length / 2))); localStorage.setItem(STORE, JSON.stringify(chats)); } catch (e2) {}
+    }
+  }
+  function titleOf(t) {
+    t = String(t || "").replace(/\s+/g, " ").trim();
+    return t.length > 48 ? t.slice(0, 47) + "…" : (t || "საუბარი");
+  }
+  function saveChat() {
+    if (!messages.length) return;
+    if (!currentId) currentId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    let c = chats.find(x => x.id === currentId);
+    if (!c) { c = { id: currentId, title: titleOf(messages[0].content), messages: [], updated: 0 }; chats.unshift(c); }
+    c.messages = messages.slice(-MAX_SAVED_MSGS).map(m => ({ role: m.role, content: m.content }));
+    c.updated = Date.now();
+    chats.sort((a, b) => b.updated - a.updated);
+    chats = chats.slice(0, MAX_CHATS);
+    persist();
+    renderRecents();
+  }
+  function renderRecents() {
+    recentsEl.innerHTML = "";
+    if (!chats.length) {
+      const d = document.createElement("div");
+      d.className = "rec-empty";
+      d.textContent = "ჯერ საუბარი არ გაქვს. დაწერე პირველი შეკითხვა და ის აქ შეინახება.";
+      recentsEl.appendChild(d);
+      return;
+    }
+    chats.forEach(c => {
+      const row = document.createElement("div");
+      row.className = "rec" + (c.id === currentId ? " active" : "");
+      const open = document.createElement("button");
+      open.className = "open";
+      open.innerHTML = BUBBLE + "<span></span>";
+      open.lastChild.textContent = c.title;
+      open.addEventListener("click", () => openChat(c.id));
+      const del = document.createElement("button");
+      del.className = "del";
+      del.setAttribute("aria-label", "წაშლა");
+      del.innerHTML = TRASH;
+      del.addEventListener("click", e => { e.stopPropagation(); deleteChat(c.id); });
+      row.appendChild(open); row.appendChild(del);
+      recentsEl.appendChild(row);
+    });
+  }
+
+  function openDrawer() {
+    loadChatsMerge();
+    renderRecents();
+    drawerEl.classList.add("open"); scrimEl.classList.add("show");
+    drawerEl.setAttribute("aria-hidden", "false"); menuBtn.setAttribute("aria-expanded", "true");
+  }
+  function closeDrawer() {
+    drawerEl.classList.remove("open"); scrimEl.classList.remove("show");
+    drawerEl.setAttribute("aria-hidden", "true"); menuBtn.setAttribute("aria-expanded", "false");
+  }
+  // სხვა ტაბში შენახული საუბრებიც რომ გამოჩნდეს, გახსნისას ვკითხულობთ თავიდან
+  function loadChatsMerge() {
+    const mine = chats.find(c => c.id === currentId);
+    loadChats();
+    if (mine && !chats.some(c => c.id === mine.id)) chats.unshift(mine);
+  }
+
+  // თუ პასუხი იწერება, ჯერ ვაჩერებთ (დაწერილი ნაწილი ინახება), მერე ვცვლით საუბარს
+  async function whenIdle(fn) {
+    if (busy && stopFn) {
+      stopFn();
+      for (let i = 0; i < 80 && busy; i++) await new Promise(r => setTimeout(r, 25));
+    }
+    fn();
+  }
+  function startNew() {
+    whenIdle(() => {
+      messages = []; currentId = null; wrap.innerHTML = "";
+      stick = true; chatEl.scrollTop = 0;
+      closeDrawer(); renderRecents();
+      inputEl.value = ""; inputEl.style.height = "auto"; syncSend();
+      if (matchMedia("(hover: hover)").matches) inputEl.focus();
+    });
+  }
+  function openChat(id) {
+    const c = chats.find(x => x.id === id);
+    if (!c) return;
+    whenIdle(() => {
+      currentId = c.id;
+      messages = c.messages.map(m => ({ role: m.role, content: m.content }));
+      redraw(); closeDrawer(); renderRecents();
+    });
+  }
+  function deleteChat(id) {
+    chats = chats.filter(c => c.id !== id);
+    persist();
+    if (id === currentId) startNew(); else renderRecents();
+  }
+  menuBtn.addEventListener("click", openDrawer);
+  scrimEl.addEventListener("click", closeDrawer);
+  document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
+  document.getElementById("newChat").addEventListener("click", startNew);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+  // ---------------------------------------------------------------------
+
   function redraw() {
     wrap.innerHTML = "";
-    if (!messages.length) { showHero(); return; }
+    if (!messages.length) return;
     messages.forEach(m => m.role === "user" ? addUser(m.content, true) : addBot(m.content, true));
     toBottom(true);
   }
@@ -603,45 +706,6 @@
     if (box.children.length > 1) bot.insertBefore(box, bot._actions);
   }
 
-  function errText(e) {
-    if (!e) return "კავშირის შეცდომა";
-    if (typeof e === "string") return e;
-    const m = e.message || (e.error && e.error.message) || e.error || e.msg;
-    if (typeof m === "string" && m) return m;
-    try { return JSON.stringify(e); } catch (x) { return "კავშირის შეცდომა"; }
-  }
-  function extractText(r) {
-    if (typeof r === "string") return r;
-    const c = r && r.message && r.message.content;
-    if (typeof c === "string") return c;
-    if (Array.isArray(c)) return c.map(b => (b && b.text) || "").join("");
-    return r != null ? String(r) : "";
-  }
-  // მოდელს ყოველ კითხვაზე ვეუბნებით დღევანდელ თარიღს, რომ "2024 წელზე" არ დარჩეს
-  function systemPrompt(search) {
-    let zone = "Asia/Tbilisi";
-    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || zone; } catch (e) {}
-    const now = new Date();
-    let iso = now.toISOString().slice(0, 10), weekday = "";
-    try {
-      iso = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
-      weekday = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long" }).format(now);
-    } catch (e) {}
-    return (
-      "შენ ხარ MOON AI — მეგობრული და გამოცდილი AI ასისტენტი. პასუხობ მკაფიოდ და გასაგებად. " +
-      "ყოველთვის უპასუხე იმ ენაზე, რომლითაც მომხმარებელი გწერს; თუ ენა გაურკვეველია, პასუხი ქართულად დაწერე.\n\n" +
-      "დღევანდელი თარიღია " + iso + " (" + weekday + "), დროის სარტყელი: " + zone + ". " +
-      "ეს არის სწორი, მიმდინარე თარიღი. შენი სწავლების მონაცემები უფრო ძველია, ამიტომ ახალ ამბებზე, ფასებზე, " +
-      "პროდუქტებისა და პროგრამების ვერსიებზე, სპორტზე, პოლიტიკაზე და ყველაფერზე, რაც შეიძლებოდა შეცვლილიყო, " +
-      (search
-        ? "ჯერ გამოიყენე ძებნა და უპასუხე მიღებული ახალი ინფორმაციით. "
-        : "თუ დარწმუნებული არ ხარ, პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს. ") +
-      "არასდროს თქვა, რომ ახლა 2024 წელია, და ძველი მონაცემები დღევანდელად არ გაასაღო.\n\n" +
-      "ფორმატი: LaTeX-ს და დოლარის ნიშნებით მათემატიკურ ჩანაწერებს ($...$) არ იყენებ. ისრებისთვის წერე უბრალო სიმბოლოებს (→, ←, ⇒), " +
-      "ტექსტი კი დაწერე მარტივი Markdown-ით: მოკლე აბზაცები, საჭიროებისას სია, მუქი ტექსტი მნიშვნელოვანისთვის."
-    );
-  }
-
   let stopFn = null;
 
   async function send() {
@@ -666,25 +730,48 @@
 
     const keep = (finalText) => {
       messages.push({ role: "assistant", content: finalText });
+      saveChat();
       addActions(bot, finalText);
       showSources(bot, sources);
     };
 
     try {
-      if (location.protocol === "file:") throw new Error("გახსენი გვერდი HTTP სერვერიდან (file:// მისამართზე არ მუშაობს).");
-      if (typeof puter === "undefined") throw new Error("Puter.js ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და სცადე თავიდან.");
-      const model = modelEl.value;
-      const useSearch = model === SEARCH_MODEL;
-      const msgs = [{ role: "system", content: systemPrompt(useSearch) }].concat(messages.slice(-30));
-      if (useSearch) {
-        const r = await puter.ai.chat(msgs, { model, tools: [{ type: "web_search" }], normalize: true, signal: ctrl.signal });
-        answer = extractText(r);
-        if (answer) reveal.push(answer);
-      } else {
-        const stream = await puter.ai.chat(msgs, { model, stream: true, signal: ctrl.signal });
-        for await (const part of stream) {
-          if (part && part.type === "error") throw new Error(part.message || "");
-          if (part && part.text && (!part.type || part.type === "text")) { answer += part.text; reveal.push(part.text); }
+      let tz = "";
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+      const res = await fetch(API_URL, {
+        method: "POST", signal: ctrl.signal,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages: messages.slice(-30), tz })
+      });
+      if (!res.ok) {
+        let msg = "შეცდომა " + res.status;
+        try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
+        throw new Error(msg);
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data) continue;
+          try {
+            const ev = JSON.parse(data);
+            if (ev.type === "content_block_delta" && ev.delta && ev.delta.text) {
+              answer += ev.delta.text;
+              reveal.push(ev.delta.text);
+            } else if (ev.type === "sources") {
+              sources = ev.sources;
+            } else if (ev.type === "error" && ev.message) {
+              streamError = String(ev.message);
+            }
+          } catch (e) {}
         }
       }
       if (!answer) throw new Error(streamError || "პასუხი ვერ მივიღე, სცადე თავიდან.");
@@ -693,10 +780,10 @@
       if (finalText) keep(finalText); else { bot.remove(); messages.pop(); }
     } catch (err) {
       const shown = reveal.stop();
-      if ((err && err.name === "AbortError") || userStopped) {
+      if (err.name === "AbortError" || userStopped) {
         if (shown) keep(shown); else { bot.remove(); messages.pop(); }
       } else {
-        bot._bubble.innerHTML = '<span class="err">' + esc(errText(err)) + "</span>";
+        bot._bubble.innerHTML = '<span class="err">' + esc(err.message || "კავშირის შეცდომა") + "</span>";
         messages.pop();
       }
     } finally {
@@ -715,7 +802,10 @@
     syncSend();
   });
   syncSend();
+  loadChats();
+  renderRecents();
   redraw();
+  if (matchMedia("(hover: hover)").matches) inputEl.focus();
 })();
 </script>
 </body>
