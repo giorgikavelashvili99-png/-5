@@ -16,10 +16,16 @@ const RATE_LIMIT = 20;           // მოთხოვნა ...
 const RATE_WINDOW_MS = 60_000;   // ... წუთში, ერთ IP-ზე
 
 // სარეზერვო მოდელები: თუ მთავარის უფასო ლიმიტი ამოიწურა, სერვერი თავისით გადადის მსუბუქ მოდელებზე
-const FALLBACKS = (process.env.GEMINI_FALLBACKS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite")
+const FALLBACKS = (process.env.GEMINI_FALLBACKS ||
+  "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-latest,gemini-flash-lite-latest,gemini-2.5-flash,gemini-2.5-flash-lite")
   .split(",").map(s => s.trim()).filter(Boolean);
 const MODELS = [MODEL, ...FALLBACKS.filter(m => m !== MODEL)];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const DEBUG = process.env.GEMINI_DEBUG === "1"; // 1 = ტექნიკური მიზეზიც გამოჩნდება ჩატში (მხოლოდ გამართვისთვის)
+function errMsg(text) {
+  try { const j = JSON.parse(text); if (j.error && j.error.message) return String(j.error.message).slice(0, 220); } catch {}
+  return String(text || "").slice(0, 220);
+}
 function retryDelayMs(text) {
   const m = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(text || "");
   return m ? Math.round(parseFloat(m[1]) * 1000) : 0;
@@ -144,7 +150,7 @@ async function chat(req, res) {
   );
 
   // მოდელებს რიგრიგობით ვცდით: ლიმიტი ამოიწურა (429), გადატვირთულია (5xx) ან ძებნა არ გავიდა (400) — შემდეგი ვარიანტი
-  let opened = null, fail = { status: 0, daily: false, retryMs: 0 };
+  let opened = null, fail = { status: 0, daily: false, zero: false, retryMs: 0, detail: "" };
   try {
     for (let round = 0; round < 2 && !opened; round++) {
       let waitMs = 0;
@@ -154,8 +160,14 @@ async function chat(req, res) {
           const r = await call(model, useSearch);
           if (r.ok) { opened = { up: r, model, usedSearch: useSearch }; break; }
           const text = await r.text().catch(() => "");
-          console.error("Gemini", model, useSearch ? "(ძებნით)" : "(ძებნის გარეშე)", r.status, text.slice(0, 300));
-          fail = { status: r.status, daily: /PerDay|per day/i.test(text), retryMs: retryDelayMs(text) };
+          console.error("Gemini", model, useSearch ? "(ძებნით)" : "(ძებნის გარეშე)", r.status, text.slice(0, 1200));
+          fail = {
+            status: fail.status === 429 ? 429 : r.status, // 429 უფრო მნიშვნელოვანია, ვიდრე ბოლო მოდელის 404
+            daily: fail.daily || /PerDay|per day/i.test(text),
+            zero: fail.zero || /limit:\s*0\b/.test(text),
+            retryMs: Math.max(fail.retryMs || 0, retryDelayMs(text)),
+            detail: fail.detail || (model + " " + r.status + ": " + errMsg(text))
+          };
           if (r.status === 429) waitMs = Math.max(waitMs, fail.retryMs);
           if (r.status === 400 && useSearch) { useSearch = false; continue; } // იგივე მოდელი, ძებნის გარეშე
           break;
@@ -174,11 +186,13 @@ async function chat(req, res) {
   if (!opened) {
     let msg = "AI სერვისმა შეცდომა დააბრუნა (" + fail.status + "). სცადე რამდენიმე წუთში.";
     if (fail.status === 429) {
-      msg = fail.daily
-        ? "უფასო დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით, ლიმიტი ყოველდღიურად ახლდება."
-        : "უფასო ლიმიტი წუთში ამოიწურა. სცადე დაახლოებით " + Math.max(10, Math.ceil((fail.retryMs || 60000) / 1000)) + " წამში.";
+      if (fail.zero) msg = "ამ გასაღებზე უფასო ლიმიტი ჩართული არ არის (0). aistudio.google.com-ზე შეამოწმე გასაღების პროექტი ან ჩართე ბილინგი.";
+      else if (fail.daily) msg = "უფასო დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით, ლიმიტი ყოველდღიურად ახლდება.";
+      else if (fail.retryMs) msg = "უფასო ლიმიტი წუთში ამოიწურა. სცადე დაახლოებით " + Math.max(10, Math.ceil(fail.retryMs / 1000)) + " წამში.";
+      else msg = "უფასო ლიმიტი ამოიწურა. სცადე რამდენიმე წუთში. თუ განმეორდა, ამ გასაღებზე ლიმიტი გათავებულია: შეამოწმე aistudio.google.com-ზე.";
     } else if (fail.status === 400 || fail.status === 403) msg = "გასაღები ან მოდელი არასწორია. შეამოწმე სერვერის პარამეტრები.";
     else if (fail.status === 404) msg = "მოდელი ვერ მოიძებნა. შეამოწმე GEMINI_MODEL.";
+    if (DEBUG && fail.detail) msg += " [" + fail.detail + "]";
     return json(res, 502, { error: msg });
   }
   const up = opened.up, model = opened.model, usedSearch = opened.usedSearch;
