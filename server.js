@@ -214,7 +214,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && (url === "/" || url === "/Index.html" || url === "/index.html")) {
     fs.readFile(INDEX, (err, data) => {
       if (err) { res.writeHead(500); return res.end("Index.html not found"); }
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      // no-cache: ბრაუზერი ყოველთვის უახლეს ვერსიას იღებს განახლების შემდეგ
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" });
       res.end(data);
     });
     return;
