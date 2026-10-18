@@ -105,6 +105,19 @@
     background: var(--text); animation: caret 1s steps(2, jump-none) infinite;
   }
   @keyframes caret { 50% { opacity: 0; } }
+
+  /* სიტყვები რბილად ჩნდება: მხოლოდ opacity და transform, ამიტომ ლაგის გარეშეა */
+  .w { display: inline-block; animation: wIn .7s var(--ease) both; }
+  @keyframes wIn { from { opacity: 0; transform: translate3d(0, 5px, 0); } to { opacity: 1; transform: none; } }
+
+  .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; animation: fade .45s var(--ease) both; }
+  .sources span { font-size: 12px; color: var(--muted); letter-spacing: .1em; margin-right: 2px; }
+  .sources a {
+    font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px;
+    text-decoration: none; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: color .18s, border-color .18s;
+  }
+  .sources a:hover { color: var(--text); border-color: var(--line2); }
   .thinking { display: inline-flex; gap: 6px; padding: 10px 0; }
   .thinking i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: breathe 1.2s ease-in-out infinite; }
   .thinking i:nth-child(2) { animation-delay: .18s; } .thinking i:nth-child(3) { animation-delay: .36s; }
@@ -349,6 +362,146 @@
   }
   function save() { store.set("moon_ai_history", JSON.stringify(messages.slice(-40))); }
 
+  const WORD_MS = 700; // ერთი სიტყვის გამოჩენის ხანგრძლივობა (უნდა ემთხვეოდეს CSS-ის .w ანიმაციას)
+  const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // პასუხის მშვიდი გამოჩენა: სიტყვები რბილად ჩნდება კითხვის კომფორტული ტემპით.
+  // ტემპი თავისით ეგუება: თუ პასუხი სწრაფად მოდის, ცოტა აჩქარდება, რომ არ ჩამორჩეს.
+  function createReveal(el) {
+    let full = "", cut = 0, done = false, stopped = false, completed = false;
+    let raf = 0, last = 0, acc = 0, lastPaint = 0, dirty = false;
+    const births = [];
+    let resolveFinished;
+    const finished = new Promise(r => { resolveFinished = r; });
+
+    function advance(n) {
+      const re = /\s*\S+/g;
+      re.lastIndex = cut;
+      while (n > 0) {
+        const m = re.exec(full);
+        if (!m) break;
+        // ბოლო სიტყვა შეიძლება ჯერ არ მოსულიყო სრულად
+        if (!done && re.lastIndex >= full.length && !/\s$/.test(full)) break;
+        cut = re.lastIndex; n--;
+      }
+      if (done && !/\S/.test(full.slice(cut))) cut = full.length;
+    }
+
+    // ახალ სიტყვებს ვაჩენთ ანიმაციით; უარყოფითი delay ანიმაციას შეუფერხებლად აგრძელებს ხელახალი დახატვისას
+    function decorate(now) {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      let total = 0, n;
+      while ((n = walker.nextNode())) {
+        if (n.parentNode.closest && n.parentNode.closest(".code")) continue;
+        const c = (n.nodeValue.match(/\S+/g) || []).length;
+        if (c) { nodes.push({ n, start: total, c }); total += c; }
+      }
+      while (births.length < total) births.push(now);
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const info = nodes[i];
+        if (now - births[info.start + info.c - 1] >= WORD_MS) break;
+        const text = info.n.nodeValue;
+        const frag = document.createDocumentFragment();
+        const re = /\S+/g;
+        let m, idx = 0, w = info.start;
+        while ((m = re.exec(text))) {
+          if (m.index > idx) frag.append(text.slice(idx, m.index));
+          const age = now - births[w];
+          if (age >= WORD_MS) {
+            frag.append(m[0]);
+          } else {
+            const s = document.createElement("span");
+            s.className = "w";
+            s.style.animationDelay = (-age) + "ms";
+            s.textContent = m[0];
+            frag.append(s);
+          }
+          idx = m.index + m[0].length; w++;
+        }
+        if (idx < text.length) frag.append(text.slice(idx));
+        info.n.replaceWith(frag);
+      }
+    }
+
+    function paint(now) {
+      el.classList.add("streaming");
+      el.innerHTML = md(full.slice(0, cut));
+      if (!REDUCE) decorate(now);
+      toBottom();
+    }
+
+    function schedule() { if (!raf && !stopped) raf = requestAnimationFrame(frame); }
+
+    function frame(t) {
+      raf = 0;
+      if (stopped) return;
+      const dt = Math.min(80, t - (last || t));
+      last = t;
+      const backlog = (full.slice(cut).match(/\S+/g) || []).length;
+      let rate = 16 + backlog * 0.35;                // სიტყვა წამში: მშვიდი ტემპი, რომელიც ჩამორჩენისას ოდნავ ჩქარდება
+      if (done) rate = Math.max(rate, backlog / 6);  // დასრულების შემდეგ დარჩენილი დიდხანს არ გაგრძელდეს
+      rate = REDUCE ? 240 : Math.min(rate, 140);
+      acc += rate * dt / 1000;
+      const n = Math.floor(acc);
+      if (n > 0) {
+        acc -= n;
+        const before = cut;
+        advance(n);
+        if (cut !== before) dirty = true;
+      }
+      const gap = full.length > 8000 ? 50 : 0;       // ძალიან გრძელ ტექსტზე დახატვას ცოტას ვუფრთხილდებით
+      if (dirty && t - lastPaint >= gap) { paint(t); lastPaint = t; dirty = false; }
+      if (done && cut >= full.length && !dirty) { complete(); return; }
+      if (cut < full.length || dirty) schedule(); else last = 0;
+    }
+
+    function complete() {
+      if (completed) return;
+      completed = true;
+      // ბოლო სიტყვებს ანიმაცია დავასრულებინოთ, მერე სუფთად ვხატავთ
+      setTimeout(() => {
+        if (!stopped) { el.classList.remove("streaming"); el.innerHTML = md(full); }
+        resolveFinished();
+      }, REDUCE ? 0 : WORD_MS + 40);
+    }
+
+    return {
+      push(text) { full += text; schedule(); },
+      end() { done = true; schedule(); return finished; },
+      shown() { return full.slice(0, cut); },
+      stop() {
+        if (!stopped) {
+          stopped = true;
+          if (raf) cancelAnimationFrame(raf);
+          el.classList.remove("streaming");
+          if (cut > 0) el.innerHTML = md(full.slice(0, cut));
+          resolveFinished();
+        }
+        return full.slice(0, cut);
+      }
+    };
+  }
+
+  function showSources(bot, list) {
+    if (!Array.isArray(list) || !list.length) return;
+    const box = document.createElement("div");
+    box.className = "sources";
+    const label = document.createElement("span");
+    label.textContent = "წყაროები";
+    box.appendChild(label);
+    list.slice(0, 5).forEach(s => {
+      if (!s || typeof s.uri !== "string" || !/^https?:\/\//i.test(s.uri)) return;
+      const a = document.createElement("a");
+      a.href = s.uri; a.target = "_blank"; a.rel = "noopener noreferrer";
+      a.textContent = String(s.title || s.uri);
+      box.appendChild(a);
+    });
+    if (box.children.length > 1) bot.insertBefore(box, bot._actions);
+  }
+
+  let stopFn = null;
+
   async function send() {
     if (busy) return;
     const text = inputEl.value.trim();
@@ -365,19 +518,24 @@
 
     busy = true; syncSend();
     ctrl = new AbortController();
-    let answer = "", raf = 0;
-    const paint = () => {
-      raf = 0;
-      bot._bubble.classList.add("streaming");
-      bot._bubble.innerHTML = md(answer);
-      toBottom();
+    const reveal = createReveal(bot._bubble);
+    let answer = "", sources = null, userStopped = false;
+    stopFn = () => { userStopped = true; ctrl.abort(); reveal.stop(); };
+
+    const keep = (finalText) => {
+      messages.push({ role: "assistant", content: finalText });
+      addActions(bot, finalText);
+      showSources(bot, sources);
+      save();
     };
 
     try {
+      let tz = "";
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
       const res = await fetch(API_URL, {
         method: "POST", signal: ctrl.signal,
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: messages.slice(-30) })
+        body: JSON.stringify({ messages: messages.slice(-30), tz })
       });
       if (!res.ok) {
         let msg = "შეცდომა " + res.status;
@@ -393,47 +551,40 @@
         buf += dec.decode(value, { stream: true });
         const lines = buf.split("\n");
         buf = lines.pop();
-        let changed = false;
         for (const line of lines) {
           if (!line.startsWith("data:")) continue;
           const data = line.slice(5).trim();
           if (!data) continue;
           try {
             const ev = JSON.parse(data);
-            if (ev.type === "content_block_delta" && ev.delta && ev.delta.text) { answer += ev.delta.text; changed = true; }
+            if (ev.type === "content_block_delta" && ev.delta && ev.delta.text) {
+              answer += ev.delta.text;
+              reveal.push(ev.delta.text);
+            } else if (ev.type === "sources") {
+              sources = ev.sources;
+            }
           } catch (e) {}
         }
-        if (changed && !raf) raf = requestAnimationFrame(paint);
       }
-      if (raf) cancelAnimationFrame(raf);
       if (!answer) throw new Error("პასუხი ვერ მივიღე, სცადე თავიდან.");
-      bot._bubble.classList.remove("streaming");
-      bot._bubble.innerHTML = md(answer);
-      messages.push({ role: "assistant", content: answer });
-      addActions(bot, answer);
-      save();
+      await reveal.end();
+      const finalText = userStopped ? reveal.shown() : answer;
+      if (finalText) keep(finalText); else { bot.remove(); messages.pop(); }
     } catch (err) {
-      if (raf) cancelAnimationFrame(raf);
-      bot._bubble.classList.remove("streaming");
-      if (err.name === "AbortError") {
-        if (answer) {
-          bot._bubble.innerHTML = md(answer);
-          messages.push({ role: "assistant", content: answer });
-          addActions(bot, answer); save();
-        } else {
-          bot.remove(); messages.pop();
-        }
+      const shown = reveal.stop();
+      if (err.name === "AbortError" || userStopped) {
+        if (shown) keep(shown); else { bot.remove(); messages.pop(); }
       } else {
         bot._bubble.innerHTML = '<span class="err">' + esc(err.message || "კავშირის შეცდომა") + "</span>";
         messages.pop();
       }
     } finally {
-      busy = false; ctrl = null; syncSend(); toBottom();
+      busy = false; ctrl = null; stopFn = null; syncSend(); toBottom();
       if (matchMedia("(hover: hover)").matches) inputEl.focus();
     }
   }
 
-  sendBtn.addEventListener("click", () => { if (busy && ctrl) ctrl.abort(); else send(); });
+  sendBtn.addEventListener("click", () => { if (busy && stopFn) stopFn(); else send(); });
   inputEl.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
   });
