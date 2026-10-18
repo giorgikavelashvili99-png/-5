@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0d">
 <title>MOON AI</title>
+<script src="https://js.puter.com/v2/"></script>
 <style>
   :root {
     --bg: #0b0b0d;
@@ -46,6 +47,20 @@
   }
   .icon:hover { color: var(--text); background: var(--surface2); }
   .icon:active { transform: scale(.94); }
+
+  /* მოდელის არჩევა */
+  .model { position: relative; }
+  .model select {
+    appearance: none; -webkit-appearance: none; background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    color: var(--body); font: inherit; font-size: 13px; letter-spacing: .04em; padding: 8px 32px 8px 14px; outline: 0; cursor: pointer;
+    transition: border-color .2s, color .2s;
+  }
+  .model select:hover, .model select:focus-visible { border-color: var(--line2); color: var(--text); }
+  .model select option { background: #131316; color: #ececf0; }
+  .model svg { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; color: var(--muted); pointer-events: none; }
+  .powered { max-width: 740px; margin: 6px auto 0; text-align: center; font-size: 11px; color: var(--muted); opacity: .6; }
+  .powered a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line2); }
+  .powered a:hover { color: var(--text); }
 
   /* საუბარი */
   #chat { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 18px 20px 12px; }
@@ -97,18 +112,13 @@
   }
   .code-h button { color: var(--muted); font-size: 12px; padding: 2px 4px; transition: color .18s; }
   .code-h button:hover { color: var(--text); }
-  .code pre { padding: 14px 16px; overflow-x: auto; direction: ltr; text-align: left; }
+  .code pre { padding: 14px 16px; overflow-x: auto; direction: ltr; text-align: left; font-size: 13.5px; line-height: 1.65; }
   .code code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13.5px; line-height: 1.65; color: #e6e6ea; }
 
-  .streaming > :last-child:not(.code):not(ul):not(ol)::after {
-    content: ""; display: inline-block; width: 7px; height: 1.05em; margin-left: 3px; vertical-align: -.18em;
-    background: var(--text); animation: caret 1s steps(2, jump-none) infinite;
-  }
-  @keyframes caret { 50% { opacity: 0; } }
 
-  /* სიტყვები რბილად ჩნდება: მხოლოდ opacity და transform, ამიტომ ლაგის გარეშეა */
-  .w { display: inline-block; animation: wIn .7s var(--ease) both; }
-  @keyframes wIn { from { opacity: 0; transform: translate3d(0, 5px, 0); } to { opacity: 1; transform: none; } }
+  /* სიტყვები რბილად ამოდის: მხოლოდ opacity, ამიტომ ლაგის გარეშეა და ტექსტი არ ცახცახებს */
+  .w, .blk { animation: wIn .9s cubic-bezier(.3, .6, .3, 1) both; }
+  @keyframes wIn { from { opacity: 0; } to { opacity: 1; } }
 
   .jump {
     position: fixed; left: 50%; bottom: calc(104px + env(safe-area-inset-bottom)); z-index: 5;
@@ -185,6 +195,15 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5l8 9 8-9v14"/></svg>
     <b>MOON AI</b>
   </div>
+  <div class="model">
+    <select id="model" aria-label="მოდელი">
+      <option value="gemini-3.5-flash-lite">MOON 1.0</option>
+      <option value="gemini-3-flash-preview">MOON 2.0</option>
+      <option value="claude-sonnet-5">MOON 3.0</option>
+      <option value="openai/gpt-5.6-luna" selected>MOON 4.0</option>
+    </select>
+    <svg viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
 </header>
 
 <main id="chat"><div class="wrap" id="wrap"></div></main>
@@ -199,13 +218,13 @@
     <button id="send" aria-label="გაგზავნა" disabled></button>
   </div>
   <div class="hint">MOON AI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია გადაამოწმე.</div>
+  <div class="powered"><a href="https://developer.puter.com" target="_blank" rel="noopener">Powered by Puter</a></div>
 </footer>
 
 <script>
 (function () {
-  // თუ Index.html სერვერისგან განცალკევებით ჰოსტდება (მაგ. GitHub Pages),
-  // ჩაწერე სერვერის მისამართი, მაგ: "https://შენი-სერვისი.onrender.com/api/chat"
-  const API_URL = "/api/chat";
+  // MOON 4.0 (OpenAI) იყენებს ინტერნეტ ძიებას, ამიტომ ახალ ინფორმაციას იცნობს. დანარჩენები უშუალოდ პასუხობენ.
+  const SEARCH_MODEL = "openai/gpt-5.6-luna";
 
   const MARK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5l8 9 8-9v14"/></svg>';
   const SEND_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
@@ -226,6 +245,12 @@
   const sendBtn = document.getElementById("send");
   const topEl = document.getElementById("top");
   const jumpEl = document.getElementById("jump");
+  const modelEl = document.getElementById("model");
+  try {
+    const saved = localStorage.getItem("moon_ai_model");
+    if (saved && Array.from(modelEl.options).some(o => o.value === saved)) modelEl.value = saved;
+  } catch (e) {}
+  modelEl.addEventListener("change", () => { try { localStorage.setItem("moon_ai_model", modelEl.value); } catch (e) {} });
 
   let messages = [];
   let busy = false;
@@ -247,7 +272,13 @@
     s = s.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
     return s.replace(/\u0001(\d+)\u0001/g, (m, i) => "<code>" + codes[i] + "</code>");
   }
+  const TEX = { rightarrow: "\u2192", to: "\u2192", longrightarrow: "\u2192", Rightarrow: "\u21D2", leftarrow: "\u2190", Leftarrow: "\u21D0",
+    leftrightarrow: "\u2194", times: "\u00D7", approx: "\u2248", neq: "\u2260", leq: "\u2264", geq: "\u2265", cdot: "\u00B7", ldots: "\u2026" };
+  function tex(s) {
+    return s.replace(/\$\s*\\([A-Za-z]+)\s*\$/g, (m, k) => TEX[k] || m).replace(/\\(rightarrow|leftarrow|Rightarrow|leftrightarrow)\b/g, (m, k) => TEX[k]);
+  }
   function md(src) {
+    src = tex(src);
     const blocks = [];
     let t = src.replace(/```([\w+#.-]*)[^\S\n]*\n?([\s\S]*?)(```|$)/g, (m, lang, code) => {
       blocks.push({ lang, code: code.replace(/\n$/, "") });
@@ -381,15 +412,15 @@
     toBottom(true);
   }
 
-  const WORD_MS = 700; // ერთი სიტყვის გამოჩენის ხანგრძლივობა (უნდა ემთხვეოდეს CSS-ის .w ანიმაციას)
+  const WORD_MS = 900; // ერთი სიტყვის გამოჩენის ხანგრძლივობა (უნდა ემთხვეოდეს CSS-ის .w ანიმაციას)
   const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // პასუხის მშვიდი გამოჩენა: სიტყვები რბილად ჩნდება კითხვის კომფორტული ტემპით.
-  // ტემპი თავისით ეგუება: თუ პასუხი სწრაფად მოდის, ცოტა აჩქარდება, რომ არ ჩამორჩეს.
+  // პასუხის მშვიდი გამოჩენა: სიტყვები რბილად "ამოდის" (opacity), კითხვის კომფორტული ტემპით.
+  // არსებულ DOM-ს არასდროს ვანადგურებთ: მხოლოდ ახალ სიტყვებს ვამატებთ, ამიტომ ანიმაცია არ წყდება და არ ციმციმებს.
   function createReveal(el) {
-    let full = "", cut = 0, done = false, stopped = false, completed = false;
+    let full = "", cut = 0, done = false, stopped = false, completed = false, started = false;
     let raf = 0, last = 0, acc = 0, lastPaint = 0, dirty = false;
-    const births = [];
+    const blocks = [];
     let resolveFinished;
     const finished = new Promise(r => { resolveFinished = r; });
 
@@ -406,47 +437,100 @@
       if (done && !/\S/.test(full.slice(cut))) cut = full.length;
     }
 
-    // ახალ სიტყვებს ვაჩენთ ანიმაციით; უარყოფითი delay ანიმაციას შეუფერხებლად აგრძელებს ხელახალი დახატვისას
-    function decorate(now) {
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    // ყოველ სიტყვას ცალკე span-ში ვხვევთ, რომ თითოეულმა საკუთარი ანიმაცია გაიაროს
+    function wrapWords(root) {
+      if (root.classList && root.classList.contains("code")) { root.classList.add("blk"); return root; }
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       const nodes = [];
-      let total = 0, n;
+      let n;
       while ((n = walker.nextNode())) {
         if (n.parentNode.closest && n.parentNode.closest(".code")) continue;
-        const c = (n.nodeValue.match(/\S+/g) || []).length;
-        if (c) { nodes.push({ n, start: total, c }); total += c; }
+        if (/\S/.test(n.nodeValue)) nodes.push(n);
       }
-      while (births.length < total) births.push(now);
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const info = nodes[i];
-        if (now - births[info.start + info.c - 1] >= WORD_MS) break;
-        const text = info.n.nodeValue;
+      for (const node of nodes) {
+        const text = node.nodeValue;
         const frag = document.createDocumentFragment();
         const re = /\S+/g;
-        let m, idx = 0, w = info.start;
+        let m, idx = 0;
         while ((m = re.exec(text))) {
           if (m.index > idx) frag.append(text.slice(idx, m.index));
-          const age = now - births[w];
-          if (age >= WORD_MS) {
-            frag.append(m[0]);
-          } else {
-            const s = document.createElement("span");
-            s.className = "w";
-            s.style.animationDelay = (-age) + "ms";
-            s.textContent = m[0];
-            frag.append(s);
-          }
-          idx = m.index + m[0].length; w++;
+          const s = document.createElement("span");
+          s.className = "w";
+          s.textContent = m[0];
+          frag.append(s);
+          idx = m.index + m[0].length;
         }
         if (idx < text.length) frag.append(text.slice(idx));
-        info.n.replaceWith(frag);
+        node.replaceWith(frag);
+      }
+      return root;
+    }
+
+    // ცოცხალ DOM-ს ახალთან ვადარებთ: უცვლელი კვანძები ხელუხლებელი რჩება (ანიმაცია გრძელდება), ახალი ემატება
+    function morph(live, next) {
+      const ln = live.childNodes, nn = next.childNodes;
+      for (let i = 0; i < nn.length; i++) {
+        const a = ln[i], b = nn[i];
+        if (!a) { live.appendChild(b.cloneNode(true)); continue; }
+        if (a.nodeType === 3 && b.nodeType === 3) {
+          if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue;
+        } else if (a.nodeType === 1 && b.nodeType === 1 && a.tagName === b.tagName) {
+          morph(a, b);
+        } else {
+          live.replaceChild(b.cloneNode(true), a);
+        }
+      }
+      while (ln.length > nn.length) live.removeChild(live.lastChild);
+    }
+
+    // ანიმაციის დასრულების შემდეგ ბლოკს უბრალო ტექსტით ვანაცვლებთ (DOM მსუბუქი რჩება, იერი იგივეა)
+    function settle(rec) {
+      if (stopped || rec.settled) return;
+      rec.settled = true;
+      if (rec.el.parentNode === el) {
+        const p = rec.plain.cloneNode(true);
+        el.replaceChild(p, rec.el);
+        rec.el = p;
       }
     }
 
-    function paint(now) {
-      el.classList.add("streaming");
-      el.innerHTML = md(full.slice(0, cut));
-      if (!REDUCE) decorate(now);
+    function paint() {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = md(full.slice(0, cut));
+      const next = Array.from(tmp.children);
+      if (!started) { started = true; el.innerHTML = ""; el.classList.add("streaming"); }
+      const lastIdx = next.length - 1;
+      const animate = !REDUCE;
+      const fresh = nb => (animate ? wrapWords(nb.cloneNode(true)) : nb.cloneNode(true));
+      for (let i = 0; i < next.length; i++) {
+        const nb = next[i], html = nb.outerHTML;
+        let rec = blocks[i];
+        if (!rec) {
+          const node = fresh(nb);
+          el.appendChild(node);
+          rec = blocks[i] = { el: node, html, plain: nb, settled: false, timer: 0 };
+        } else if (rec.html !== html) {
+          if (rec.el.tagName !== nb.tagName) {
+            const node = fresh(nb);
+            el.replaceChild(node, rec.el);
+            rec.el = node; rec.settled = false;
+          } else if (rec.settled || !animate) {
+            morph(rec.el, nb);
+          } else {
+            morph(rec.el, wrapWords(nb.cloneNode(true)));
+          }
+          rec.html = html; rec.plain = nb;
+        }
+        // ბლოკი, რომლის შემდეგაც სხვა ბლოკი გაჩნდა, დასრულებულია
+        if (i < lastIdx && !rec.settled && !rec.timer) {
+          const r = rec;
+          rec.timer = setTimeout(() => settle(r), WORD_MS + 80);
+        }
+      }
+      while (blocks.length > next.length) {
+        const r = blocks.pop();
+        if (r.el.parentNode === el) el.removeChild(r.el);
+      }
       toBottom();
     }
 
@@ -470,7 +554,7 @@
         if (cut !== before) dirty = true;
       }
       const gap = full.length > 8000 ? 50 : 0;       // ძალიან გრძელ ტექსტზე დახატვას ცოტას ვუფრთხილდებით
-      if (dirty && t - lastPaint >= gap) { paint(t); lastPaint = t; dirty = false; }
+      if (dirty && t - lastPaint >= gap) { paint(); lastPaint = t; dirty = false; }
       if (done && cut >= full.length && !dirty) { complete(); return; }
       if (cut < full.length || dirty) schedule(); else last = 0;
     }
@@ -482,7 +566,7 @@
       setTimeout(() => {
         if (!stopped) { el.classList.remove("streaming"); el.innerHTML = md(full); }
         resolveFinished();
-      }, REDUCE ? 0 : WORD_MS + 40);
+      }, REDUCE ? 0 : WORD_MS + 80);
     }
 
     return {
@@ -519,6 +603,45 @@
     if (box.children.length > 1) bot.insertBefore(box, bot._actions);
   }
 
+  function errText(e) {
+    if (!e) return "კავშირის შეცდომა";
+    if (typeof e === "string") return e;
+    const m = e.message || (e.error && e.error.message) || e.error || e.msg;
+    if (typeof m === "string" && m) return m;
+    try { return JSON.stringify(e); } catch (x) { return "კავშირის შეცდომა"; }
+  }
+  function extractText(r) {
+    if (typeof r === "string") return r;
+    const c = r && r.message && r.message.content;
+    if (typeof c === "string") return c;
+    if (Array.isArray(c)) return c.map(b => (b && b.text) || "").join("");
+    return r != null ? String(r) : "";
+  }
+  // მოდელს ყოველ კითხვაზე ვეუბნებით დღევანდელ თარიღს, რომ "2024 წელზე" არ დარჩეს
+  function systemPrompt(search) {
+    let zone = "Asia/Tbilisi";
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || zone; } catch (e) {}
+    const now = new Date();
+    let iso = now.toISOString().slice(0, 10), weekday = "";
+    try {
+      iso = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
+      weekday = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long" }).format(now);
+    } catch (e) {}
+    return (
+      "შენ ხარ MOON AI — მეგობრული და გამოცდილი AI ასისტენტი. პასუხობ მკაფიოდ და გასაგებად. " +
+      "ყოველთვის უპასუხე იმ ენაზე, რომლითაც მომხმარებელი გწერს; თუ ენა გაურკვეველია, პასუხი ქართულად დაწერე.\n\n" +
+      "დღევანდელი თარიღია " + iso + " (" + weekday + "), დროის სარტყელი: " + zone + ". " +
+      "ეს არის სწორი, მიმდინარე თარიღი. შენი სწავლების მონაცემები უფრო ძველია, ამიტომ ახალ ამბებზე, ფასებზე, " +
+      "პროდუქტებისა და პროგრამების ვერსიებზე, სპორტზე, პოლიტიკაზე და ყველაფერზე, რაც შეიძლებოდა შეცვლილიყო, " +
+      (search
+        ? "ჯერ გამოიყენე ძებნა და უპასუხე მიღებული ახალი ინფორმაციით. "
+        : "თუ დარწმუნებული არ ხარ, პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს. ") +
+      "არასდროს თქვა, რომ ახლა 2024 წელია, და ძველი მონაცემები დღევანდელად არ გაასაღო.\n\n" +
+      "ფორმატი: LaTeX-ს და დოლარის ნიშნებით მათემატიკურ ჩანაწერებს ($...$) არ იყენებ. ისრებისთვის წერე უბრალო სიმბოლოებს (→, ←, ⇒), " +
+      "ტექსტი კი დაწერე მარტივი Markdown-ით: მოკლე აბზაცები, საჭიროებისას სია, მუქი ტექსტი მნიშვნელოვანისთვის."
+    );
+  }
+
   let stopFn = null;
 
   async function send() {
@@ -538,7 +661,7 @@
     busy = true; syncSend();
     ctrl = new AbortController();
     const reveal = createReveal(bot._bubble);
-    let answer = "", sources = null, userStopped = false;
+    let answer = "", sources = null, userStopped = false, streamError = "";
     stopFn = () => { userStopped = true; ctrl.abort(); reveal.stop(); };
 
     const keep = (finalText) => {
@@ -548,52 +671,32 @@
     };
 
     try {
-      let tz = "";
-      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
-      const res = await fetch(API_URL, {
-        method: "POST", signal: ctrl.signal,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: messages.slice(-30), tz })
-      });
-      if (!res.ok) {
-        let msg = "შეცდომა " + res.status;
-        try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
-        throw new Error(msg);
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const data = line.slice(5).trim();
-          if (!data) continue;
-          try {
-            const ev = JSON.parse(data);
-            if (ev.type === "content_block_delta" && ev.delta && ev.delta.text) {
-              answer += ev.delta.text;
-              reveal.push(ev.delta.text);
-            } else if (ev.type === "sources") {
-              sources = ev.sources;
-            }
-          } catch (e) {}
+      if (location.protocol === "file:") throw new Error("გახსენი გვერდი HTTP სერვერიდან (file:// მისამართზე არ მუშაობს).");
+      if (typeof puter === "undefined") throw new Error("Puter.js ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და სცადე თავიდან.");
+      const model = modelEl.value;
+      const useSearch = model === SEARCH_MODEL;
+      const msgs = [{ role: "system", content: systemPrompt(useSearch) }].concat(messages.slice(-30));
+      if (useSearch) {
+        const r = await puter.ai.chat(msgs, { model, tools: [{ type: "web_search" }], normalize: true, signal: ctrl.signal });
+        answer = extractText(r);
+        if (answer) reveal.push(answer);
+      } else {
+        const stream = await puter.ai.chat(msgs, { model, stream: true, signal: ctrl.signal });
+        for await (const part of stream) {
+          if (part && part.type === "error") throw new Error(part.message || "");
+          if (part && part.text && (!part.type || part.type === "text")) { answer += part.text; reveal.push(part.text); }
         }
       }
-      if (!answer) throw new Error("პასუხი ვერ მივიღე, სცადე თავიდან.");
+      if (!answer) throw new Error(streamError || "პასუხი ვერ მივიღე, სცადე თავიდან.");
       await reveal.end();
       const finalText = userStopped ? reveal.shown() : answer;
       if (finalText) keep(finalText); else { bot.remove(); messages.pop(); }
     } catch (err) {
       const shown = reveal.stop();
-      if (err.name === "AbortError" || userStopped) {
+      if ((err && err.name === "AbortError") || userStopped) {
         if (shown) keep(shown); else { bot.remove(); messages.pop(); }
       } else {
-        bot._bubble.innerHTML = '<span class="err">' + esc(err.message || "კავშირის შეცდომა") + "</span>";
+        bot._bubble.innerHTML = '<span class="err">' + esc(errText(err)) + "</span>";
         messages.pop();
       }
     } finally {
