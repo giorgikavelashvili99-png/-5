@@ -9,12 +9,21 @@ const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ""; // მაგ: https://moonfull4k.xyz (თუ Index.html სხვაგან ჰოსტდება)
-const MAX_TOKENS = 2048;
+const MAX_TOKENS = 8192;          // მოდელის ფიქრიც ამ ლიმიტში ითვლება, ამიტომ დიდი მარაგი გვჭირდება
 const MAX_MESSAGES = 30;
 const MAX_CHARS = 8000;          // ერთი შეტყობინების მაქსიმალური სიგრძე
 const RATE_LIMIT = 20;           // მოთხოვნა ...
 const RATE_WINDOW_MS = 60_000;   // ... წუთში, ერთ IP-ზე
 
+// სარეზერვო მოდელები: თუ მთავარის უფასო ლიმიტი ამოიწურა, სერვერი თავისით გადადის მსუბუქ მოდელებზე
+const FALLBACKS = (process.env.GEMINI_FALLBACKS || "gemini-3.5-flash-lite,gemini-3.1-flash-lite")
+  .split(",").map(s => s.trim()).filter(Boolean);
+const MODELS = [MODEL, ...FALLBACKS.filter(m => m !== MODEL)];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function retryDelayMs(text) {
+  const m = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(text || "");
+  return m ? Math.round(parseFloat(m[1]) * 1000) : 0;
+}
 const SEARCH = process.env.GEMINI_SEARCH !== "0"; // Google ძებნა ახალი ინფორმაციისთვის (გამოსართავად: GEMINI_SEARCH=0)
 
 // მოდელს ყოველ მოთხოვნაზე ვეუბნებით დღევანდელ თარიღს, რომ "2024 წელზე" არ დარჩეს
@@ -33,7 +42,9 @@ function systemPrompt(tz) {
     "ეს არის სწორი, მიმდინარე თარიღი. შენი სწავლების მონაცემები უფრო ძველია, ამიტომ ახალ ამბებზე, ფასებზე, " +
     "პროდუქტებისა და პროგრამების ვერსიებზე, სპორტზე, პოლიტიკაზე და ყველაფერზე, რაც შეიძლებოდა შეცვლილიყო, " +
     "ჯერ გამოიყენე ძებნა და უპასუხე მიღებული ახალი ინფორმაციით. არასდროს თქვა, რომ ახლა 2024 წელია, და ძველი " +
-    "მონაცემები დღევანდელად არ გაასაღო. თუ ახალი ინფორმაცია ვერ დაადასტურე, პირდაპირ თქვი, რომ ის შეიძლება მოძველებული იყოს."
+    "მონაცემები დღევანდელად არ გაასაღო. თუ ახალი ინფორმაცია ვერ დაადასტურე, პირდაპირ თქვი, რომ ის შეიძლება მოძველებული იყოს.\n\n" +
+    "ფორმატი: LaTeX-ს და დოლარის ნიშნებით მათემატიკურ ჩანაწერებს ($...$) არ იყენებ. ისრებისთვის წერე უბრალო სიმბოლოებს (→, ←, ⇒), " +
+    "ტექსტი კი დაწერე მარტივი Markdown-ით: მოკლე აბზაცები, საჭიროებისას სია, მუქი ტექსტი მნიშვნელოვანისთვის."
   );
 }
 
@@ -117,39 +128,61 @@ async function chat(req, res) {
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }]
   }));
-  const call = withSearch => fetch(url, {
-    method: "POST",
-    signal: ctrl.signal,
-    headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: system }] },
-      contents,
-      ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
-      generationConfig: { maxOutputTokens: MAX_TOKENS }
-    })
-  });
+  const call = (model, withSearch) => fetch(
+    "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":streamGenerateContent?alt=sse",
+    {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents,
+        ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
+        generationConfig: { maxOutputTokens: MAX_TOKENS }
+      })
+    }
+  );
 
-  let up;
+  // მოდელებს რიგრიგობით ვცდით: ლიმიტი ამოიწურა (429), გადატვირთულია (5xx) ან ძებნა არ გავიდა (400) — შემდეგი ვარიანტი
+  let opened = null, fail = { status: 0, daily: false, retryMs: 0 };
   try {
-    up = await call(SEARCH);
-    // თუ ძებნით მოთხოვნა არ გავიდა (ფორმატი, ლიმიტი) — ერთხელ ვცადოთ ძებნის გარეშე, ჩატი არ გაჩერდეს
-    if (!up.ok && SEARCH && (up.status === 400 || up.status === 429)) {
-      console.error("Gemini (ძებნით) შეცდომა", up.status, await up.text().catch(() => ""));
-      up = await call(false);
+    for (let round = 0; round < 2 && !opened; round++) {
+      let waitMs = 0;
+      for (const model of MODELS) {
+        let useSearch = SEARCH;
+        for (let k = 0; k < 2 && !opened; k++) {
+          const r = await call(model, useSearch);
+          if (r.ok) { opened = { up: r, model, usedSearch: useSearch }; break; }
+          const text = await r.text().catch(() => "");
+          console.error("Gemini", model, useSearch ? "(ძებნით)" : "(ძებნის გარეშე)", r.status, text.slice(0, 300));
+          fail = { status: r.status, daily: /PerDay|per day/i.test(text), retryMs: retryDelayMs(text) };
+          if (r.status === 429) waitMs = Math.max(waitMs, fail.retryMs);
+          if (r.status === 400 && useSearch) { useSearch = false; continue; } // იგივე მოდელი, ძებნის გარეშე
+          break;
+        }
+        if (opened) break;
+      }
+      // მოკლე წუთობრივი ლიმიტი: ცოტას დაველოდოთ და მეორე წრე ვცადოთ
+      if (!opened && round === 0 && waitMs > 0 && waitMs <= 12000 && !fail.daily && !ctrl.signal.aborted) await sleep(waitMs + 400);
+      else break;
     }
   } catch (e) {
     if (ctrl.signal.aborted) return;
     return json(res, 502, { error: "AI სერვისთან კავშირი ვერ მოხერხდა." });
   }
 
-  if (!up.ok) {
-    console.error("Gemini error", up.status, await up.text().catch(() => ""));
-    let msg = "AI სერვისმა შეცდომა დააბრუნა (" + up.status + ").";
-    if (up.status === 429) msg = "უფასო ლიმიტი ამოიწურა ან სერვისი დატვირთულია. სცადე რამდენიმე წუთში.";
-    else if (up.status === 400 || up.status === 403) msg = "გასაღები ან მოდელი არასწორია. შეამოწმე სერვერის პარამეტრები.";
-    else if (up.status === 404) msg = "მოდელი ვერ მოიძებნა. შეამოწმე GEMINI_MODEL.";
+  if (!opened) {
+    let msg = "AI სერვისმა შეცდომა დააბრუნა (" + fail.status + "). სცადე რამდენიმე წუთში.";
+    if (fail.status === 429) {
+      msg = fail.daily
+        ? "უფასო დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით, ლიმიტი ყოველდღიურად ახლდება."
+        : "უფასო ლიმიტი წუთში ამოიწურა. სცადე დაახლოებით " + Math.max(10, Math.ceil((fail.retryMs || 60000) / 1000)) + " წამში.";
+    } else if (fail.status === 400 || fail.status === 403) msg = "გასაღები ან მოდელი არასწორია. შეამოწმე სერვერის პარამეტრები.";
+    else if (fail.status === 404) msg = "მოდელი ვერ მოიძებნა. შეამოწმე GEMINI_MODEL.";
     return json(res, 502, { error: msg });
   }
+  const up = opened.up, model = opened.model, usedSearch = opened.usedSearch;
+  if (model !== MODEL) console.error("გამოყენებულია სარეზერვო მოდელი:", model);
 
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -158,19 +191,25 @@ async function chat(req, res) {
   });
 
   // Gemini-ს ნაკადს ვაქცევთ იმ ფორმატად, რომელსაც Index.html კითხულობს
-  const send = text => res.write("data: " + JSON.stringify({
-    type: "content_block_delta", delta: { type: "text_delta", text }
-  }) + "\n\n");
   const sources = new Map(); // ძებნის წყაროები (uri -> სათაური)
+  let st = { emitted: false, reason: "", error: "" };
+  const send = text => {
+    st.emitted = true;
+    res.write("data: " + JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text } }) + "\n\n");
+  };
   const handle = line => {
     if (!line.startsWith("data:")) return;
     const data = line.slice(5).trim();
     if (!data) return;
     try {
-      const cand = (JSON.parse(data).candidates || [])[0];
-      const parts = cand?.content?.parts || [];
-      for (const p of parts) if (typeof p.text === "string" && p.text && !p.thought) send(p.text);
-      for (const c of cand?.groundingMetadata?.groundingChunks || []) {
+      const j = JSON.parse(data);
+      if (j.error) { st.error = String(j.error.message || "error").slice(0, 300); return; }
+      if (j.promptFeedback && j.promptFeedback.blockReason) st.reason = "BLOCKED_" + j.promptFeedback.blockReason;
+      const cand = (j.candidates || [])[0];
+      if (!cand) return;
+      if (cand.finishReason && cand.finishReason !== "STOP") st.reason = cand.finishReason;
+      for (const p of cand.content?.parts || []) if (typeof p.text === "string" && p.text && !p.thought) send(p.text);
+      for (const c of cand.groundingMetadata?.groundingChunks || []) {
         const w = c && c.web;
         if (w && typeof w.uri === "string" && /^https?:\/\//.test(w.uri) && !sources.has(w.uri)) {
           sources.set(w.uri, String(w.title || w.uri).slice(0, 120));
@@ -178,19 +217,43 @@ async function chat(req, res) {
       }
     } catch {}
   };
+  const pump = async stream => {
+    st = { emitted: false, reason: "", error: "" };
+    try {
+      const dec = new TextDecoder();
+      let buf = "";
+      for await (const chunk of stream.body) {
+        buf += dec.decode(chunk, { stream: true });
+        const lines = buf.split(/\r?\n/);
+        buf = lines.pop();
+        lines.forEach(handle);
+      }
+      handle(buf);
+    } catch {}
+  };
 
-  try {
-    const dec = new TextDecoder();
-    let buf = "";
-    for await (const chunk of up.body) {
-      buf += dec.decode(chunk, { stream: true });
-      const lines = buf.split(/\r?\n/);
-      buf = lines.pop();
-      lines.forEach(handle);
-    }
-    handle(buf);
-  } catch {}
-  if (sources.size) {
+  await pump(up);
+
+  // თუ ძებნით პასუხი ცარიელი დაბრუნდა, ავტომატურად ვცადოთ ძებნის გარეშე
+  if (!st.emitted && usedSearch && !ctrl.signal.aborted) {
+    console.error("ცარიელი პასუხი ძებნით:", st.reason || "-", st.error || "-", "→ ვცდით ძებნის გარეშე");
+    try {
+      const up2 = await call(model, false);
+      if (up2.ok) await pump(up2);
+      else console.error("Gemini (ძებნის გარეშე) შეცდომა", up2.status, await up2.text().catch(() => ""));
+    } catch {}
+  }
+
+  if (!st.emitted) {
+    console.error("ცარიელი პასუხი:", st.reason || "-", st.error || "-");
+    let message = "AI-მ ცარიელი პასუხი დააბრუნა. სცადე თავიდან.";
+    if (st.reason === "MAX_TOKENS") message = "პასუხი ძალიან გრძელი გამოვიდა და ვერ დასრულდა. სცადე უფრო მოკლე კითხვა.";
+    else if (/SAFETY|BLOCK|PROHIBITED|RECITATION|SPII/i.test(st.reason)) message = "ამ კითხვაზე პასუხს ვერ გაგცემ. სცადე სხვაგვარად ჩამოაყალიბე.";
+    else if (st.error) message = "AI სერვისმა შეცდომა დააბრუნა. სცადე რამდენიმე წუთში.";
+    if (!res.writableEnded) res.write("data: " + JSON.stringify({ type: "error", message }) + "\n\n");
+  }
+
+  if (sources.size && st.emitted) {
     const list = [...sources].slice(0, 5).map(([uri, title]) => ({ uri, title }));
     res.write("data: " + JSON.stringify({ type: "sources", sources: list }) + "\n\n");
   }
