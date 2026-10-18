@@ -15,9 +15,27 @@ const MAX_CHARS = 8000;          // ერთი შეტყობინებ�
 const RATE_LIMIT = 20;           // მოთხოვნა ...
 const RATE_WINDOW_MS = 60_000;   // ... წუთში, ერთ IP-ზე
 
-const SYSTEM =
-  "შენ ხარ MOON AI — მეგობრული და გამოცდილი AI ასისტენტი. პასუხობ მკაფიოდ და გასაგებად. " +
-  "ყოველთვის უპასუხე იმ ენაზე, რომლითაც მომხმარებელი გწერს; თუ ენა გაურკვეველია, პასუხი ქართულად დაწერე.";
+const SEARCH = process.env.GEMINI_SEARCH !== "0"; // Google ძებნა ახალი ინფორმაციისთვის (გამოსართავად: GEMINI_SEARCH=0)
+
+// მოდელს ყოველ მოთხოვნაზე ვეუბნებით დღევანდელ თარიღს, რომ "2024 წელზე" არ დარჩეს
+function systemPrompt(tz) {
+  let zone = "Asia/Tbilisi";
+  if (typeof tz === "string" && tz.length < 60) {
+    try { new Intl.DateTimeFormat("en", { timeZone: tz }); zone = tz; } catch {}
+  }
+  const now = new Date();
+  const iso = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long" }).format(now);
+  return (
+    "შენ ხარ MOON AI — მეგობრული და გამოცდილი AI ასისტენტი. პასუხობ მკაფიოდ და გასაგებად. " +
+    "ყოველთვის უპასუხე იმ ენაზე, რომლითაც მომხმარებელი გწერს; თუ ენა გაურკვეველია, პასუხი ქართულად დაწერე.\n\n" +
+    "დღევანდელი თარიღია " + iso + " (" + weekday + "), დროის სარტყელი: " + zone + ". " +
+    "ეს არის სწორი, მიმდინარე თარიღი. შენი სწავლების მონაცემები უფრო ძველია, ამიტომ ახალ ამბებზე, ფასებზე, " +
+    "პროდუქტებისა და პროგრამების ვერსიებზე, სპორტზე, პოლიტიკაზე და ყველაფერზე, რაც შეიძლებოდა შეცვლილიყო, " +
+    "ჯერ გამოიყენე ძებნა და უპასუხე მიღებული ახალი ინფორმაციით. არასდროს თქვა, რომ ახლა 2024 წელია, და ძველი " +
+    "მონაცემები დღევანდელად არ გაასაღო. თუ ახალი ინფორმაცია ვერ დაადასტურე, პირდაპირ თქვი, რომ ის შეიძლება მოძველებული იყოს."
+  );
+}
 
 const hits = new Map();
 function limited(ip) {
@@ -92,23 +110,33 @@ async function chat(req, res) {
   const ctrl = new AbortController();
   res.on("close", () => ctrl.abort());
 
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+    encodeURIComponent(MODEL) + ":streamGenerateContent?alt=sse";
+  const system = systemPrompt(body.tz);
+  const contents = messages.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }]
+  }));
+  const call = withSearch => fetch(url, {
+    method: "POST",
+    signal: ctrl.signal,
+    headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      ...(withSearch ? { tools: [{ google_search: {} }] } : {}),
+      generationConfig: { maxOutputTokens: MAX_TOKENS }
+    })
+  });
+
   let up;
   try {
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-      encodeURIComponent(MODEL) + ":streamGenerateContent?alt=sse";
-    up = await fetch(url, {
-      method: "POST",
-      signal: ctrl.signal,
-      headers: { "content-type": "application/json", "x-goog-api-key": API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM }] },
-        contents: messages.map(m => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }]
-        })),
-        generationConfig: { maxOutputTokens: MAX_TOKENS }
-      })
-    });
+    up = await call(SEARCH);
+    // თუ ძებნით მოთხოვნა არ გავიდა (ფორმატი, ლიმიტი) — ერთხელ ვცადოთ ძებნის გარეშე, ჩატი არ გაჩერდეს
+    if (!up.ok && SEARCH && (up.status === 400 || up.status === 429)) {
+      console.error("Gemini (ძებნით) შეცდომა", up.status, await up.text().catch(() => ""));
+      up = await call(false);
+    }
   } catch (e) {
     if (ctrl.signal.aborted) return;
     return json(res, 502, { error: "AI სერვისთან კავშირი ვერ მოხერხდა." });
@@ -133,13 +161,21 @@ async function chat(req, res) {
   const send = text => res.write("data: " + JSON.stringify({
     type: "content_block_delta", delta: { type: "text_delta", text }
   }) + "\n\n");
+  const sources = new Map(); // ძებნის წყაროები (uri -> სათაური)
   const handle = line => {
     if (!line.startsWith("data:")) return;
     const data = line.slice(5).trim();
     if (!data) return;
     try {
-      const parts = (JSON.parse(data).candidates || [])[0]?.content?.parts || [];
+      const cand = (JSON.parse(data).candidates || [])[0];
+      const parts = cand?.content?.parts || [];
       for (const p of parts) if (typeof p.text === "string" && p.text && !p.thought) send(p.text);
+      for (const c of cand?.groundingMetadata?.groundingChunks || []) {
+        const w = c && c.web;
+        if (w && typeof w.uri === "string" && /^https?:\/\//.test(w.uri) && !sources.has(w.uri)) {
+          sources.set(w.uri, String(w.title || w.uri).slice(0, 120));
+        }
+      }
     } catch {}
   };
 
@@ -154,6 +190,10 @@ async function chat(req, res) {
     }
     handle(buf);
   } catch {}
+  if (sources.size) {
+    const list = [...sources].slice(0, 5).map(([uri, title]) => ({ uri, title }));
+    res.write("data: " + JSON.stringify({ type: "sources", sources: list }) + "\n\n");
+  }
   res.end();
 }
 
@@ -186,5 +226,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log("AI ჩატი გაშვებულია: http://localhost:" + PORT);
-  if (!API_KEY) console.warn("გაფრთხილება: ANTHROPIC_API_KEY არ არის დაყენებული.");
+  if (!API_KEY) console.warn("გაფრთხილება: GEMINI_API_KEY არ არის დაყენებული.");
 });
