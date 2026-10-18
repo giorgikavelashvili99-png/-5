@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0d">
 <title>MOON AI</title>
+<script src="https://js.puter.com/v2/"></script>
 <style>
   :root {
     --bg: #0b0b0d;
@@ -37,7 +38,9 @@
     border-bottom: 1px solid transparent; transition: border-color .25s;
   }
   header.scrolled { border-bottom-color: var(--line); }
-  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 12px; padding: 6px 4px; border-radius: 10px; transition: opacity .18s, transform .18s var(--ease); }
+  button.brand:hover { opacity: .8; }
+  button.brand:active { transform: scale(.96); }
   .brand svg { width: 22px; height: 22px; color: var(--text); }
   .brand b { font-size: 14px; font-weight: 600; letter-spacing: .32em; text-indent: .04em; }
   .icon {
@@ -125,6 +128,15 @@
   .w, .blk { animation: wIn .9s cubic-bezier(.3, .6, .3, 1) both; }
   @keyframes wIn { from { opacity: 0; } to { opacity: 1; } }
 
+  .ptr {
+    position: fixed; left: 50%; top: calc(58px + env(safe-area-inset-top)); z-index: 6; width: 38px; height: 38px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--surface2); border: 1px solid var(--line2); color: var(--text);
+    opacity: 0; pointer-events: none; transform: translate3d(-50%, -50px, 0);
+  }
+  .ptr svg { width: 18px; height: 18px; transition: transform .15s; }
+  .ptr.go svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   .jump {
     position: fixed; left: 50%; bottom: calc(104px + env(safe-area-inset-bottom)); z-index: 5;
     width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
@@ -176,6 +188,27 @@
   #send:hover:not(:disabled) { transform: scale(1.06); }
   #send:active:not(:disabled) { transform: scale(.92); }
   #send:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
+  .ver-wrap { position: relative; margin-right: 4px; }
+  .ver { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: .12em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px 6px 13px; white-space: nowrap; transition: color .18s, border-color .18s; }
+  .ver:hover, .ver[aria-expanded="true"] { color: var(--text); border-color: var(--line2); }
+  .ver svg { transition: transform .2s var(--ease); }
+  .ver[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .vermenu {
+    position: absolute; right: 0; top: calc(100% + 10px); width: min(300px, calc(100vw - 32px)); z-index: 15;
+    background: var(--surface); border: 1px solid var(--line2); border-radius: 18px; padding: 6px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55); opacity: 0; transform: translate3d(0, -6px, 0); pointer-events: none; visibility: hidden;
+    transition: opacity .18s, transform .22s var(--ease), visibility 0s .22s;
+  }
+  .vermenu.open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .18s, transform .22s var(--ease), visibility 0s; }
+  .vopt { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border-radius: 13px; text-align: left; transition: background .15s; }
+  .vopt:hover { background: var(--surface2); }
+  .vopt b { display: block; font-size: 14px; font-weight: 600; letter-spacing: .1em; color: var(--text); }
+  .vopt small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); letter-spacing: 0; line-height: 1.45; }
+  .vopt svg { width: 18px; height: 18px; color: var(--accent); flex: none; opacity: 0; }
+  .vopt.on svg { opacity: 1; }
+  .hint .pw::before { content: "·"; margin: 0 8px; opacity: .6; }
+  .hint .pw a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line2); transition: color .18s; }
+  .hint .pw a:hover { color: var(--text); }
   .hint { max-width: 740px; margin: 9px auto 0; text-align: center; font-size: 11.5px; color: var(--muted); opacity: .75; }
 
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -186,7 +219,9 @@
     header { padding-left: 16px; padding-right: 12px; }
     #chat { padding-left: 16px; padding-right: 16px; }
     footer { padding-left: 12px; padding-right: 12px; }
-    .hint { display: none; }
+    .hint .warn { display: none; }
+    .hint .pw::before { content: none; }
+    .hint { margin-top: 6px; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001s !important; animation-iteration-count: 1 !important; transition: none !important; }
@@ -198,12 +233,18 @@
 <header id="top">
   <div class="hl">
     <button class="icon" id="menu" aria-label="ბოლო საუბრები" aria-expanded="false"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg></button>
-    <div class="brand">
+    <button class="brand" id="logo" aria-label="გვერდის განახლება">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5l8 9 8-9v14"/></svg>
       <b>MOON AI</b>
-    </div>
+    </button>
+  </div>
+  <div class="ver-wrap">
+    <button class="ver" id="verBtn" aria-haspopup="true" aria-expanded="false"><span id="verName">MOON 1.0</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div class="vermenu" id="verMenu" role="menu"></div>
   </div>
 </header>
+
+<div class="ptr" id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>
 
 <main id="chat"><div class="wrap" id="wrap"></div></main>
 
@@ -216,7 +257,7 @@
     <textarea id="input" rows="1" placeholder="დაწერე შეკითხვა..." aria-label="შეკითხვა"></textarea>
     <button id="send" aria-label="გაგზავნა" disabled></button>
   </div>
-  <div class="hint">MOON AI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია გადაამოწმე.</div>
+  <div class="hint"><span class="warn">MOON AI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია გადაამოწმე.</span><span class="pw">Powered by <a href="https://developer.puter.com" target="_blank" rel="noopener noreferrer">Puter</a></span></div>
 </footer>
 
 <div class="scrim" id="scrim"></div>
@@ -236,9 +277,19 @@
 
 <script>
 (function () {
-  // თუ Index.html სერვერისგან განცალკევებით ჰოსტდება (მაგ. GitHub Pages),
-  // ჩაწერე სერვერის მისამართი, მაგ: "https://შენი-სერვისი.onrender.com/api/chat"
-  const API_URL = "/api/chat";
+  // პარამეტრები. მოდელების სია: https://developer.puter.com/ai/models/
+  // MOON-ის ვერსიები. თითოეულს რამდენიმე მოდელი აქვს რიგით: პირველი, რომელსაც Puter მიიღებს, იმუშავებს.
+  // თუ ვერსიის ვერც ერთი მოდელი ვერ მოიძებნა, Puter-ის ნაგულისხმევი მოდელი გამოიყენება.
+  const TIERS = [
+    { name: "MOON 1.0", desc: "სწრაფი და იაფი, ყოველდღიური კითხვებისთვის", models: ["openai/gpt-6-luna", "anthropic/claude-haiku-5-5", "gpt-5.4-nano"] },
+    { name: "MOON 2.0", desc: "დაბალანსებული: სიჩქარე და სიზუსტე", models: ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"] },
+    { name: "MOON 3.0", desc: "ძლიერი: რთული კითხვები და კოდი", models: ["anthropic/claude-opus-5-5", "openai/gpt-6-sol-pro"] },
+    { name: "MOON 4.0", desc: "ყველაზე ძლიერი. ლიმიტს უფრო სწრაფად ხარჯავს", models: ["anthropic/claude-fable-5-1", "openai/gpt-6-astra"] }
+  ];
+  // ინტერნეტში ძებნა (ახალი ამბები, ფასები). თუ მოდელი ვერ უჭერს მხარს, ჩატი თავისით ძებნის გარეშე გააგრძელებს
+  const WEB_SEARCH = true;
+  const MAX_TOKENS = 4096;
+  const HISTORY_LIMIT = 30;
 
   const SEND_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
   const STOP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>';
@@ -689,24 +740,119 @@
     };
   }
 
-  function showSources(bot, list) {
-    if (!Array.isArray(list) || !list.length) return;
-    const box = document.createElement("div");
-    box.className = "sources";
-    const label = document.createElement("span");
-    label.textContent = "წყაროები";
-    box.appendChild(label);
-    list.slice(0, 5).forEach(s => {
-      if (!s || typeof s.uri !== "string" || !/^https?:\/\//i.test(s.uri)) return;
-      const a = document.createElement("a");
-      a.href = s.uri; a.target = "_blank"; a.rel = "noopener noreferrer";
-      a.textContent = String(s.title || s.uri);
-      box.appendChild(a);
+  let stopFn = null;
+
+  // ---------- განახლება: ლოგოზე დაჭერა ან გვერდის ზემოდან ჩამოწევა ----------
+  const ptrEl = document.getElementById("ptr");
+  function reloadPage() { try { location.reload(); } catch (e) { location.href = location.pathname; } }
+  document.getElementById("logo").addEventListener("click", () => { ptrEl.classList.add("go"); ptrEl.style.opacity = "1"; ptrEl.style.transform = "translate3d(-50%, 0, 0)"; reloadPage(); });
+  let pullY = 0, pulling = false, pullD = 0;
+  const PULL_AT = 64;
+  function setPull(d) {
+    ptrEl.style.opacity = String(Math.min(1, d / PULL_AT));
+    ptrEl.style.transform = "translate3d(-50%," + (d - 50) + "px,0)";
+    ptrEl.firstElementChild.style.transform = "rotate(" + (d >= PULL_AT ? 180 : (d / PULL_AT) * 120) + "deg)";
+  }
+  chatEl.addEventListener("touchstart", e => {
+    pulling = e.touches.length === 1 && chatEl.scrollTop <= 0 && !drawerEl.classList.contains("open");
+    pullY = pulling ? e.touches[0].clientY : 0; pullD = 0;
+  }, { passive: true });
+  chatEl.addEventListener("touchmove", e => {
+    if (!pulling) return;
+    const dy = e.touches[0].clientY - pullY;
+    if (chatEl.scrollTop > 0 || dy <= 0) { if (pullD) { pullD = 0; setPull(0); } return; }
+    pullD = Math.min(dy * 0.5, 96);
+    setPull(pullD);
+  }, { passive: true });
+  function endPull() {
+    if (!pulling) return;
+    pulling = false;
+    if (pullD >= PULL_AT) { ptrEl.classList.add("go"); setPull(PULL_AT); reloadPage(); }
+    else { pullD = 0; ptrEl.style.transition = "opacity .2s, transform .2s"; setPull(0); setTimeout(() => { ptrEl.style.transition = ""; }, 220); }
+  }
+  chatEl.addEventListener("touchend", endPull, { passive: true });
+  chatEl.addEventListener("touchcancel", endPull, { passive: true });
+
+  // ---------- ვერსიის არჩევა ----------
+  let tierIdx = 0;
+  try { const v = parseInt(localStorage.getItem("moon_ai_tier"), 10); if (v >= 0 && v < TIERS.length) tierIdx = v; } catch (e) {}
+  const verBtn = document.getElementById("verBtn");
+  const verMenu = document.getElementById("verMenu");
+  const verName = document.getElementById("verName");
+  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  function renderTiers() {
+    verName.textContent = TIERS[tierIdx].name;
+    verMenu.innerHTML = "";
+    TIERS.forEach((t, i) => {
+      const b = document.createElement("button");
+      b.className = "vopt" + (i === tierIdx ? " on" : "");
+      b.setAttribute("role", "menuitemradio");
+      b.setAttribute("aria-checked", i === tierIdx ? "true" : "false");
+      b.innerHTML = "<span><b></b><small></small></span>" + CHECK;
+      b.querySelector("b").textContent = t.name;
+      b.querySelector("small").textContent = t.desc;
+      b.addEventListener("click", () => {
+        tierIdx = i;
+        try { localStorage.setItem("moon_ai_tier", String(i)); } catch (e) {}
+        renderTiers(); closeTiers();
+      });
+      verMenu.appendChild(b);
     });
-    if (box.children.length > 1) bot.insertBefore(box, bot._actions);
+  }
+  function closeTiers() { verMenu.classList.remove("open"); verBtn.setAttribute("aria-expanded", "false"); }
+  verBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    const open = !verMenu.classList.contains("open");
+    verMenu.classList.toggle("open", open);
+    verBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  document.addEventListener("click", e => { if (!verMenu.contains(e.target)) closeTiers(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeTiers(); });
+  renderTiers();
+
+  // ყოველ კითხვაზე მოდელს დღევანდელ თარიღს ვაძლევთ, რომ ძველ წლებზე არ გაჩერდეს
+  function systemPrompt() {
+    const now = new Date();
+    let tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+    const iso = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+    let weekday = "";
+    try { weekday = now.toLocaleDateString("en-US", { weekday: "long" }); } catch (e) {}
+    return [
+      "შენ ხარ MOON AI (ვერსია " + TIERS[tierIdx].name + "), მშვიდი და გასაგები ასისტენტი. თუ გკითხავენ, რომელ კომპანიას ან მოდელს ეფუძნები, არაფერი მოიგონო: თქვი, რომ MOON AI ხარ და Puter-ის პლატფორმაზე მუშაობ.",
+      "დღევანდელი თარიღია " + iso + (weekday ? " (" + weekday + ")" : "") + (tz ? ", დროის სარტყელი: " + tz : "") + ". ახლა " + now.getFullYear() + " წელია. არასოდეს თქვა, რომ 2024 ან უფრო ადრეა.",
+      "თუ კითხვა ახალ ამბებს, ფასებს, მოვლენებს ან რაიმე ცვალებად ფაქტს ეხება და ძებნა გაქვს, გამოიყენე ძებნა.",
+      "უპასუხე იმ ენაზე, რომლითაც მომხმარებელი წერს (ნაგულისხმევად ქართულად). იყავი ზუსტი, მკაფიო და არაზედმეტად ვრცელი.",
+      "ფორმატი: უბრალო Markdown (აბზაცები, სიები, **მუქი**, კოდის ბლოკები). არ გამოიყენო LaTeX და $ ფორმულები. ისრებისთვის გამოიყენე → სიმბოლო."
+    ].join("\n");
   }
 
-  let stopFn = null;
+  // Puter-ის შეცდომა სხვადასხვა ფორმით შეიძლება მოვიდეს; ვაქცევთ გასაგებ ქართულ ტექსტად
+  function puterError(err) {
+    const e = err && err.error && typeof err.error === "object" ? err.error : err;
+    const code = String((e && (e.code || e.error)) || "").toLowerCase();
+    const status = (e && (e.status || e.statusCode)) || 0;
+    const raw = String((e && e.message) || (typeof err === "string" ? err : "") || "");
+    if (code === "insufficient_funds" || status === 402) return "შენი Puter-ის უფასო ყოველთვიური ლიმიტი ამოიწურა. ახალი ლიმიტი მომდევნო თვეში განახლდება, ან შეგიძლია Puter-ზე კრედიტი შეიძინო." + (tierIdx > 0 ? " სცადე MOON 1.0, ის ნაკლებს ხარჯავს." : "");
+    if (code === "subscription_required") return "ამ მოდელს Puter-ის ფასიანი გეგმა სჭირდება. სცადე სხვა მოდელი.";
+    if (code === "too_many_requests" || status === 429) return "ძალიან ბევრი მოთხოვნა ერთდროულად. რამდენიმე წამში სცადე თავიდან.";
+    if (code === "auth_window_closed") return "ჩასაწერად Puter-ის ანგარიშით შესვლაა საჭირო. გაგზავნე თავიდან და დაასრულე შესვლა.";
+    if (code === "popup_blocked") return "ბრაუზერმა შესვლის ფანჯარა დაბლოკა. ნება დართე pop-up-ებს ამ საიტზე და გაგზავნე თავიდან.";
+    if (code === "unsupported_origin" || code === "not_available_in_app") return "ეს გვერდი Puter-თან ვერ მუშაობს ამ მისამართზე. გახსენი ის http/https მისამართიდან და არა ფაილის სახით.";
+    if (code === "request_timeout") return "პასუხმა დიდხანს დაიგვიანა. სცადე თავიდან.";
+    if (code === "input_too_large") return "შეტყობინება ძალიან დიდია. დაამოკლე და სცადე თავიდან.";
+    return raw ? "შეცდომა: " + raw.slice(0, 200) : "კავშირის შეცდომა. სცადე თავიდან.";
+  }
+  const isModelProblem = err => {
+    const e = err && err.error && typeof err.error === "object" ? err.error : err;
+    const code = String((e && (e.code || e.error)) || "").toLowerCase();
+    const msg = String((e && e.message) || "").toLowerCase();
+    return /model/.test(code) || /(unknown|invalid|no such|unsupported|unrecognized) model|model[^.]{0,40}(not found|not exist|unknown|invalid|unavailable|not available|unsupported|not supported|deprecated)/.test(msg);
+  };
+  const isSearchProblem = err => {
+    const t = (String((err && (err.message || (err.error && err.error.message))) || "") + " " + String((err && err.code) || "")).toLowerCase();
+    return /tool|web_search|search|unsupported|not support|invalid_request|bad_request|400/.test(t);
+  };
 
   async function send() {
     if (busy) return;
@@ -725,65 +871,68 @@
     busy = true; syncSend();
     ctrl = new AbortController();
     const reveal = createReveal(bot._bubble);
-    let answer = "", sources = null, userStopped = false, streamError = "";
+    let answer = "", userStopped = false;
     stopFn = () => { userStopped = true; ctrl.abort(); reveal.stop(); };
 
-    const keep = (finalText) => {
+    const keep = finalText => {
       messages.push({ role: "assistant", content: finalText });
       saveChat();
       addActions(bot, finalText);
-      showSources(bot, sources);
     };
 
-    try {
-      let tz = "";
-      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
-      const res = await fetch(API_URL, {
-        method: "POST", signal: ctrl.signal,
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: messages.slice(-30), tz })
-      });
-      if (!res.ok) {
-        let msg = "შეცდომა " + res.status;
-        try { const j = await res.json(); if (j.error) msg = j.error; } catch (e) {}
-        throw new Error(msg);
-      }
-      const reader = res.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const data = line.slice(5).trim();
-          if (!data) continue;
-          try {
-            const ev = JSON.parse(data);
-            if (ev.type === "content_block_delta" && ev.delta && ev.delta.text) {
-              answer += ev.delta.text;
-              reveal.push(ev.delta.text);
-            } else if (ev.type === "sources") {
-              sources = ev.sources;
-            } else if (ev.type === "error" && ev.message) {
-              streamError = String(ev.message);
-            }
-          } catch (e) {}
+    // ერთი მცდელობა: ნაკადს ვკითხულობთ და სიტყვებს ანიმაციაში ვაწვდით
+    async function run(withSearch, step) {
+      const opts = { stream: true, max_tokens: MAX_TOKENS, signal: ctrl.signal };
+      const mdl = TIERS[tierIdx].models[step];
+      if (mdl) opts.model = mdl;
+      if (withSearch) opts.tools = [{ type: "web_search" }];
+      const history = [{ role: "system", content: systemPrompt() }]
+        .concat(messages.slice(-HISTORY_LIMIT).map(m => ({ role: m.role, content: m.content })));
+      // Puter-ის ნაკადი: for await ... of, ტექსტი type === "text" ნაწილებშია
+      const stream = await puter.ai.chat(history, opts);
+      for await (const part of stream) {
+        if (userStopped) break;
+        if (!part) continue;
+        if (part.type === "text" && part.text) {
+          answer += part.text;
+          reveal.push(part.text);
+        } else if (part.type === "error") {
+          const er = new Error(part.message || "error");
+          er.code = part.code; er.status = part.status;
+          throw er;
         }
       }
-      if (!answer) throw new Error(streamError || "პასუხი ვერ მივიღე, სცადე თავიდან.");
+    }
+
+    try {
+      if (typeof puter === "undefined" || !puter.ai) {
+        throw new Error("Puter ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
+      }
+      // ვცდით რიგით: თუ მოდელი ვერ მოიძებნა, შემდეგს; თუ ძებნა არ ჩაიარა, ძებნის გარეშე
+      let search = WEB_SEARCH, step = 0;
+      for (let i = 0; i < 8; i++) {
+        try { await run(search, step); break; }
+        catch (e) {
+          if (answer || userStopped || ctrl.signal.aborted) throw e;
+          if (step < TIERS[tierIdx].models.length && isModelProblem(e)) { step++; continue; }
+          if (search && isSearchProblem(e)) { search = false; continue; }
+          throw e;
+        }
+      }
+      if (!answer && !userStopped) throw new Error("პასუხი ვერ მივიღე, სცადე თავიდან.");
       await reveal.end();
       const finalText = userStopped ? reveal.shown() : answer;
       if (finalText) keep(finalText); else { bot.remove(); messages.pop(); }
     } catch (err) {
       const shown = reveal.stop();
-      if (err.name === "AbortError" || userStopped) {
+      if ((err && err.name === "AbortError") || userStopped) {
         if (shown) keep(shown); else { bot.remove(); messages.pop(); }
+      } else if (answer && shown) {
+        keep(shown); // ნაკადი შუაში გაწყდა: უკვე დაწერილ ტექსტს ვინახავთ
       } else {
-        bot._bubble.innerHTML = '<span class="err">' + esc(err.message || "კავშირის შეცდომა") + "</span>";
+        const msg = err instanceof Error && !err.code && !err.status && err.message && /[Ⴀ-ჿ]/.test(err.message)
+          ? err.message : puterError(err);
+        bot._bubble.innerHTML = '<span class="err">' + esc(msg) + "</span>";
         messages.pop();
       }
     } finally {
