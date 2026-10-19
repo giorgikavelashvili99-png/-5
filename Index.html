@@ -281,6 +281,20 @@
   #send:hover:not(:disabled) { transform: scale(1.06); }
   #send:active:not(:disabled) { transform: scale(.92); }
   #send:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
+  button.ver { cursor: pointer; background: none; font-family: inherit; gap: 8px; transition: color .18s, border-color .18s; }
+  button.ver:hover, button.ver[aria-expanded="true"] { color: var(--text); border-color: var(--line2); }
+  button.ver svg { width: 13px; height: 13px; transition: transform .2s var(--ease); }
+  button.ver[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .vmenu { position: fixed; z-index: 45; width: min(300px, calc(100vw - 24px)); max-height: min(70vh, 520px); overflow-y: auto; background: #26262b; border: 1px solid var(--line2); border-radius: 18px; padding: 6px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.55); opacity: 0; transform: translateY(-6px) scale(.98); transform-origin: top right; pointer-events: none; visibility: hidden; transition: opacity .15s, transform .18s var(--ease), visibility 0s .18s; }
+  .vmenu.open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .15s, transform .18s var(--ease), visibility 0s; }
+  .vmenu button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 11px 14px; border-radius: 12px; text-align: left; color: var(--text); }
+  .vmenu button:hover, .vmenu button:active { background: #303036; }
+  .vmenu b { display: block; font-size: 15.5px; font-weight: 600; letter-spacing: .06em; }
+  .vmenu small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); letter-spacing: 0; }
+  .vmenu .tick { width: 18px; height: 18px; color: var(--accent); flex: none; opacity: 0; }
+  .vmenu button.on .tick { opacity: 1; }
+  .vmenu .vgrp { padding: 10px 14px 4px; font-size: 12.5px; letter-spacing: .02em; color: var(--muted); }
   .ver { display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: .12em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; white-space: nowrap; user-select: none; }
   .hint .pw::before { content: "·"; margin: 0 8px; opacity: .6; }
   .hint .pw a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line2); transition: color .18s; }
@@ -314,7 +328,7 @@
       <b>MOON AI</b>
     </button>
   </div>
-  <span class="ver" id="verName">MOON 1.0</span>
+  <button class="ver" id="verName" aria-haspopup="menu" aria-expanded="false" aria-label="ვერსიის არჩევა"><span id="verText">MOON 1.0</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
 </header>
 
 <div class="ptr" id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>
@@ -338,6 +352,7 @@
 </footer>
 
 <div class="ctx" id="ctx" role="menu"></div>
+<div class="vmenu" id="vmenu" role="menu"></div>
 <div class="toast" id="toast" role="status"></div>
 
 <div class="scrim" id="scrim"></div>
@@ -360,8 +375,21 @@
   // პარამეტრები. მოდელების სია: https://developer.puter.com/ai/models/
   // MOON 1.0: მოდელები რიგით ვცადოთ, პირველი, რომელსაც სერვისი მიიღებს, იმუშავებს.
   // თუ არცერთი ვერ მოიძებნა, ნაგულისხმევი მოდელი გამოიყენება.
+  // ვერსიები: მომხმარებელი ირჩევს. პირველი მოდელი არჩეულია, მეორე სარეზერვოა (თუ პირველი ვერ მოიძებნა).
+  // need: რამდენი ბალანსი (მიკროცენტი) უნდა იყოს დარჩენილი, რომ ამ ვერსიამ იმუშაოს; img: სურათის ხარისხი.
+  const FB = "openai/gpt-6-luna";
   const TIERS = [
-    { name: "MOON 1.0", models: ["openai/gpt-6-luna", "anthropic/claude-haiku-5-5", "gpt-5.4-nano"] }
+    { name: "MOON 1.0", note: "ყოველდღიური, ძირითადი", grp: "სწრაფი", models: ["openai/gpt-6-luna", "anthropic/claude-haiku-5-5", "gpt-5.4-nano"], need: 10000000, img: "low" },
+    { name: "MOON 1.1", note: "სწრაფი და ზუსტი", grp: "სწრაფი", models: ["anthropic/claude-haiku-5-5", FB], need: 10000000, img: "low" },
+    { name: "MOON 1.2", note: "სწრაფი, ძლიერი ძებნით", grp: "სწრაფი", models: ["google/gemini-3.8-flash", FB], need: 12000000, img: "low" },
+    { name: "MOON 2.0", note: "ჭკვიანი, რთული კითხვებისთვის", grp: "ჭკვიანი", models: ["openai/gpt-6.1-sol", FB], need: 20000000, img: "medium" },
+    { name: "MOON 2.1", note: "ჭკვიანი, კოდისა და ტექსტისთვის", grp: "ჭკვიანი", models: ["anthropic/claude-sonnet-5-5", FB], need: 20000000, img: "medium" },
+    { name: "MOON 3.0", note: "ყველაზე ძლიერი", grp: "ყველაზე ძლიერი", models: ["anthropic/claude-opus-5-5", FB], need: 40000000, img: "high" },
+    { name: "MOON 3.1", note: "ყველაზე ძლიერი, ახალი თაობა", grp: "ყველაზე ძლიერი", models: ["google/gemini-4-argon", FB], need: 40000000, img: "high" },
+    { name: "MOON 4.0", note: "ეკონომიური, სწრაფი", grp: "სხვა მოდელები", models: ["qwen/qwen3.8-27b", FB], need: 12000000, img: "low" },
+    { name: "MOON 4.1", note: "ძლიერი, მრავალენოვანი", grp: "სხვა მოდელები", models: ["qwen/qwen3.8-max", FB], need: 20000000, img: "medium" },
+    { name: "MOON 5.0", note: "მსუბუქი, ძალიან სწრაფი", grp: "სხვა მოდელები", models: ["meta/muse-glimmer-30b", FB], need: 10000000, img: "low" },
+    { name: "MOON 5.1", note: "დაბალანსებული, ახალი", grp: "სხვა მოდელები", models: ["meta/muse-spark-1.3", FB], need: 15000000, img: "medium" }
   ];
   // ინტერნეტში ძებნა (ახალი ამბები, ფასები). თუ მოდელი ვერ უჭერს მხარს, ჩატი თავისით ძებნის გარეშე გააგრძელებს
   const WEB_SEARCH = true;
@@ -763,8 +791,7 @@
 
   // ---------- სურათის დახატვა ----------
   const IMG_MODELS = ["gpt-image-2.5-flare", "gpt-image-2"];      // თანმიმდევრობით ვცდით; ბოლოს Puter-ის ნაგულისხმევი
-  const IMG_QUALITY = ["low"];
-  const IMG_EDIT_MODELS = ["gpt-image-2", "gemini-3.1-flash-image"];   // ფოტოდან მუშაობა
+    const IMG_EDIT_MODELS = ["gpt-image-2", "gemini-3.1-flash-image"];   // ფოტოდან მუშაობა
   const IMG_SYS_EDIT = "You turn the user's request into ONE concise English instruction for an image model that receives the user's own photo(s). Keep the people, objects and composition of the photo(s) unless the user asks to change them. Describe only the desired change or style. Output ONLY the instruction, no quotes, at most 80 words.";
   const IMG_SYS = "You write ONE detailed, vivid English prompt for a text-to-image model. Keep the user's subject, style, mood, colors, composition and any format details. For realistic photos describe camera, lighting and lens. Do not add text overlays unless asked. If a previous image prompt is given and the user asks for a change, apply the change to it. Output ONLY the prompt, no quotes, no explanation, at most 120 words.";
   const IMG_RE = /(დამიხატე|დახატე|დაგვიხატე|მომიხატე|(დამიგენერირე|დააგენერირე|გამიგენერირე|შემიქმენი|გამიკეთე|მინდა|მჭირდება)[^.\n]{0,40}(სურათ|ფოტო|ილუსტრაც|პორტრეტ|ნახატ)|(სურათ|ფოტო|ნახატ|ილუსტრაც)\S*[^.\n]{0,30}(დამიგენერირე|გამიკეთე|შემიქმენი|დამიხატე|დააგენერირე)|\b(draw|generate|create|make)\s+(me\s+)?(an?\s+)?(image|picture|photo|illustration)\b)/i;
@@ -1200,8 +1227,40 @@
   chatEl.addEventListener("touchend", endPull, { passive: true });
   chatEl.addEventListener("touchcancel", endPull, { passive: true });
 
-  const tierIdx = 0;
-  try { localStorage.removeItem("moon_ai_tier"); } catch (e) {}
+  let tierIdx = 0;
+  try { const v = parseInt(localStorage.getItem("moon_ai_tier"), 10); if (v >= 0 && v < TIERS.length) tierIdx = v; } catch (e) {}
+
+  // ვერსიის არჩევა
+  const verBtn = document.getElementById("verName"), verText = document.getElementById("verText"), vmenu = document.getElementById("vmenu");
+  const TICK = '<svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  function renderVmenu() {
+    let html = "", last = "";
+    TIERS.forEach((t, i) => {
+      if (t.grp !== last) { html += '<div class="vgrp">' + esc(t.grp) + "</div>"; last = t.grp; }
+      html += '<button role="menuitem" data-i="' + i + '" class="' + (i === tierIdx ? "on" : "") + '"><span><b>' + esc(t.name) + "</b><small>" + esc(t.note) + "</small></span>" + TICK + "</button>";
+    });
+    vmenu.innerHTML = html;
+  }
+  function closeVmenu() { vmenu.classList.remove("open"); verBtn.setAttribute("aria-expanded", "false"); }
+  function openVmenu() {
+    renderVmenu();
+    const r = verBtn.getBoundingClientRect();
+    vmenu.style.top = (r.bottom + 8) + "px";
+    vmenu.style.right = Math.max(12, window.innerWidth - r.right) + "px";
+    vmenu.classList.add("open"); verBtn.setAttribute("aria-expanded", "true");
+  }
+  function setTier(i) {
+    tierIdx = i; verText.textContent = TIERS[i].name;
+    try { localStorage.setItem("moon_ai_tier", String(i)); } catch (e) {}
+    closeVmenu();
+  }
+  verText.textContent = TIERS[tierIdx].name;
+  verBtn.addEventListener("click", e => { e.stopPropagation(); vmenu.classList.contains("open") ? closeVmenu() : openVmenu(); });
+  vmenu.addEventListener("click", e => { e.stopPropagation(); const b = e.target.closest("button[data-i]"); if (b) setTier(+b.dataset.i); });
+  document.addEventListener("click", closeVmenu);
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeVmenu(); });
+  window.addEventListener("resize", closeVmenu);
+  chatEl.addEventListener("scroll", closeVmenu, { passive: true });
 
   // ყოველ კითხვაზე მოდელს დღევანდელ თარიღს ვაძლევთ, რომ ძველ წლებზე არ გაჩერდეს
   function systemPrompt() {
@@ -1215,6 +1274,7 @@
       "შენ ხარ MOON AI (ვერსია " + TIERS[tierIdx].name + "), მშვიდი და გასაგები ასისტენტი. თუ გკითხავენ, ვინ შეგქმნა ან რომელ მოდელს ეფუძნები, უპასუხე, რომ MOON AI ხარ და ტექნიკური დეტალები არ იცი. არასოდეს დაასახელო სხვა კომპანია ან მოდელი და არაფერი მოიგონო",
       "დღევანდელი თარიღია " + iso + (weekday ? " (" + weekday + ")" : "") + (tz ? ", დროის სარტყელი: " + tz : "") + ". ახლა " + now.getFullYear() + " წელია. არასოდეს თქვა, რომ 2024 ან უფრო ადრეა.",
       "თუ კითხვა ახალ ამბებს, ფასებს, მოვლენებს ან რაიმე ცვალებად ფაქტს ეხება და ძებნა გაქვს, გამოიყენე ძებნა.",
+      "ანდაზას, ციტატას, ლექსს, თარიღს ან სხვა ფაქტს არასოდეს მოიგონებ. თუ ზუსტად არ იცი, პირდაპირ თქვი, რომ არ იცი. „ქართული ხალხური ანდაზა“ ნიშნავს რეალურ ანდაზას და არა ნათარგმნს ან შეთხზულს.",
       "უპასუხე იმ ენაზე, რომლითაც მომხმარებელი წერს (ნაგულისხმევად ქართულად). იყავი ზუსტი, მკაფიო და არაზედმეტად ვრცელი.",
       "სტილი: პასუხი დაწერე დასრულებულად და ლამაზად ჩამოყალიბებულად, როგორც ყურადღებით დაწერილი ტექსტი: ჯერ პირდაპირ და მოკლედ უპასუხე კითხვას, მერე საჭიროებისას დაამატე დეტალები. გრძელ პასუხებში გამოიყენე მოკლე სათაურები (## ...), სიები, **მუქი** მთავარი სიტყვები და შედარებისას ცხრილი. ბოლოს, საჭიროებისას, დაამატე მოკლე რჩევა ან დასკვნა. ზედმეტი შესავალი და გამეორება არ გამოიყენო და პასუხი ნახევარი არ დატოვო.",
       "ფაილები და კოდი: თუ მომხმარებელი გვერდს, აპლიკაციას, სკრიპტს ან ფაილს ითხოვს (ან კოდი 15 ხაზზე გრძელია), მთლიანი კოდი ჩასვი ერთ ბლოკში და ფაილის სახელი ღობეზე მიუთითე, მაგალითად ```html Index.html ან ```python main.py. ფაილი ნაწილებად არ დაყო. ბლოკის გარეთ ორ-სამ წინადადებაში ახსენი, რას აკეთებს და როგორ გაუშვას. კოდი ტექსტში აღარ გაიმეორო. მოკლე ილუსტრაციის კოდს (15 ხაზამდე) ფაილის სახელი არ სჭირდება.",
@@ -1498,7 +1558,7 @@
       let ratio = pickRatio(text), img = null, mi = 0;
       const models = withPhotos ? IMG_EDIT_MODELS : IMG_MODELS;
       for (let k = 0; k < 6 && !img; k++) {
-        const o = { quality: IMG_QUALITY[tierIdx] };
+        const o = { quality: TIERS[tierIdx].img };
         if (models[mi]) o.model = models[mi];
         if (withPhotos) { o.input_image = photos[0].full; o.input_images = photos.map(p => p.full); }
         if (ratio) o.ratio = ratio;
@@ -1521,7 +1581,7 @@
 
     try {
       const havePuter = typeof puter !== "undefined" && puter.ai;
-      const noBalance = havePuter && await outOfBalance(imageMode ? 30000000 : 10000000);
+      const noBalance = havePuter && await outOfBalance(imageMode ? Math.max(30000000, TIERS[tierIdx].need) : TIERS[tierIdx].need);
       const limitErr = () => Object.assign(new Error("limit"), { code: "insufficient_funds", status: 402 });
       let firstErr = noBalance ? limitErr() : null;
       let viaServer = !havePuter || noBalance;
