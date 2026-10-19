@@ -227,15 +227,28 @@
   footer { padding: 8px 20px calc(14px + env(safe-area-inset-bottom)); }
   .composer {
     max-width: 740px; margin: 0 auto; display: flex; align-items: flex-end; gap: 8px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: 26px; padding: 8px 8px 8px 22px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 26px; padding: 8px;
     transition: border-color .2s;
   }
   .composer:focus-within { border-color: var(--line2); }
   textarea {
     flex: 1; resize: none; max-height: 190px; min-height: 28px; background: none; border: 0; outline: 0;
-    color: var(--text); font: inherit; font-size: 16px; line-height: 1.55; padding: 8px 0; caret-color: var(--accent);
+    color: var(--text); font: inherit; font-size: 16px; line-height: 1.55; padding: 8px 4px; caret-color: var(--accent);
   }
   textarea::placeholder { color: var(--muted); }
+  .tool { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); flex: none; transition: color .18s, background .18s, transform .18s var(--ease); }
+  .tool svg { width: 21px; height: 21px; }
+  .tool:hover { color: var(--text); background: var(--surface2); }
+  .tool:active { transform: scale(.92); }
+  .tool[aria-pressed="true"] { color: var(--accent); background: var(--surface2); }
+  .imgcard { margin: 0; max-width: 520px; }
+  .imgcard img { display: block; width: 100%; height: auto; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); animation: fade .7s var(--ease) both; }
+  .imgcard figcaption { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .imgcard .cap { flex: 1 1 100%; min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .imgcard .file-act { grid-column: auto; }
+  .imgmiss { color: var(--muted); font-size: 14px; }
+  .imgwait { aspect-ratio: 1 / 1; max-width: 520px; border-radius: 16px; border: 1px solid var(--line);
+    background: linear-gradient(100deg, var(--surface) 30%, var(--surface2) 50%, var(--surface) 70%); background-size: 250% 100%; animation: shimmer 2.4s linear infinite; }
   #send {
     width: 40px; height: 40px; border-radius: 50%; background: var(--text); color: #0b0b0d; display: grid; place-items: center; flex: none;
     transition: transform .18s var(--ease), opacity .2s, background .2s;
@@ -309,6 +322,7 @@
 
 <footer>
   <div class="composer">
+    <button class="tool" id="imgBtn" type="button" aria-pressed="false" aria-label="სურათის დახატვა" title="სურათის დახატვა"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.5 3.5 3.5 3-3 5 5"/></svg></button>
     <textarea id="input" rows="1" placeholder="დაწერე შეკითხვა..." aria-label="შეკითხვა"></textarea>
     <button id="send" aria-label="გაგზავნა" disabled></button>
   </div>
@@ -634,7 +648,7 @@
     if (!currentId) currentId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     let c = chats.find(x => x.id === currentId);
     if (!c) { c = { id: currentId, title: titleOf(messages[0].content), messages: [], updated: 0 }; chats.unshift(c); }
-    c.messages = messages.slice(-MAX_SAVED_MSGS).map(m => ({ role: m.role, content: m.content }));
+    c.messages = messages.slice(-MAX_SAVED_MSGS).map(m => (m.image || m.imgPrompt ? { role: m.role, content: m.content, image: m.image || "", imgPrompt: m.imgPrompt || "" } : { role: m.role, content: m.content }));
     c.updated = Date.now();
     chats.sort((a, b) => b.updated - a.updated);
     chats = chats.slice(0, MAX_CHATS);
@@ -707,7 +721,7 @@
     if (!c) return;
     whenIdle(() => {
       currentId = c.id;
-      messages = c.messages.map(m => ({ role: m.role, content: m.content }));
+      messages = c.messages.map(m => Object.assign({}, m));
       redraw(); closeDrawer(); renderRecents();
     });
   }
@@ -723,10 +737,76 @@
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
   // ---------------------------------------------------------------------
 
+  // ---------- სურათის დახატვა ----------
+  const IMG_MODELS = ["gpt-image-2.5-flare", "gpt-image-2"];      // თანმიმდევრობით ვცდით; ბოლოს Puter-ის ნაგულისხმევი
+  const IMG_QUALITY = ["low", "medium", "high", "high"];          // MOON-ის ვერსიის მიხედვით
+  const IMG_SYS = "You write ONE detailed, vivid English prompt for a text-to-image model. Keep the user's subject, style, mood, colors, composition and any format details. For realistic photos describe camera, lighting and lens. Do not add text overlays unless asked. If a previous image prompt is given and the user asks for a change, apply the change to it. Output ONLY the prompt, no quotes, no explanation, at most 120 words.";
+  const IMG_RE = /(დამიხატე|დახატე|დაგვიხატე|მომიხატე|(დამიგენერირე|დააგენერირე|გამიგენერირე|შემიქმენი|გამიკეთე|მინდა|მჭირდება)[^.\n]{0,40}(სურათ|ფოტო|ილუსტრაც|პორტრეტ|ნახატ)|(სურათ|ფოტო|ნახატ|ილუსტრაც)\S*[^.\n]{0,30}(დამიგენერირე|გამიკეთე|შემიქმენი|დამიხატე|დააგენერირე)|\b(draw|generate|create|make)\s+(me\s+)?(an?\s+)?(image|picture|photo|illustration)\b)/i;
+  const imgBtn = document.getElementById("imgBtn");
+  let imgOn = false;
+  function setImgMode(on) {
+    imgOn = on;
+    imgBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    inputEl.placeholder = on ? "აღწერე სურათი, რომლის დახატვაც გინდა..." : "დაწერე შეკითხვა...";
+    if (on) inputEl.focus();
+  }
+  imgBtn.addEventListener("click", () => setImgMode(!imgOn));
+  function pickRatio(t) {
+    if (/9\s*:\s*16|ვერტიკალ|პორტრეტული|portrait|wallpaper|ტელეფონის\s+ფონ/i.test(t)) return { w: 9, h: 16 };
+    if (/16\s*:\s*9|ჰორიზონტალ|ფართო|ლანდშაფტ|landscape|banner|ბანერ/i.test(t)) return { w: 16, h: 9 };
+    return null;
+  }
+  async function toBlobUrl(src) {
+    if (!/^https?:/i.test(src)) return src;
+    try { const r = await fetch(src); if (!r.ok) throw 0; return URL.createObjectURL(await r.blob()); } catch (e) { return src; }
+  }
+  function thumbOf(im) {
+    try {
+      const k = Math.min(1, 640 / Math.max(im.naturalWidth || 1, im.naturalHeight || 1));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      return c.toDataURL("image/jpeg", 0.8);
+    } catch (e) { return ""; }
+  }
+  function imageCard(src, caption, again) {
+    const fig = document.createElement("figure");
+    fig.className = "imgcard";
+    const im = document.createElement("img");
+    im.alt = caption; im.src = src; im.decoding = "async";
+    const cap = document.createElement("figcaption");
+    const c = document.createElement("span"); c.className = "cap"; c.textContent = caption;
+    const act = document.createElement("div"); act.className = "file-act";
+    act.innerHTML = '<button class="primary" data-img-dl>\u10D2\u10D0\u10D3\u10DB\u10DD\u10EC\u10D4\u10E0\u10D0</button>' + (again ? '<button data-img-again>\u10EE\u10D4\u10DA\u10D0\u10EE\u10DA\u10D0</button>' : "");
+    cap.appendChild(c); cap.appendChild(act);
+    fig.appendChild(im); fig.appendChild(cap);
+    fig._src = src; fig._prompt = caption;
+    return fig;
+  }
+  function addImageMsg(m, instant) {
+    const el = addBot("", instant);
+    if (m.image) el._bubble.appendChild(imageCard(m.image, m.imgPrompt, true));
+    else { const d = document.createElement("p"); d.className = "imgmiss"; d.textContent = "სურათი: " + m.imgPrompt + " (ის აღარ ინახება)"; el._bubble.appendChild(d); }
+    return el;
+  }
+  wrap.addEventListener("click", e => {
+    const dl = e.target.closest("[data-img-dl]"), again = e.target.closest("[data-img-again]");
+    if (!dl && !again) return;
+    const fig = (dl || again).closest(".imgcard");
+    if (dl) {
+      const a = document.createElement("a");
+      a.href = fig._src || fig.querySelector("img").src;
+      a.download = "moon-ai-" + Date.now() + (/^data:image\/jpeg/.test(a.href) ? ".jpg" : ".png");
+      document.body.appendChild(a); a.click(); a.remove();
+    } else if (!busy) {
+      inputEl.value = fig._prompt; setImgMode(true); send();
+    }
+  });
+
   function redraw() {
     wrap.innerHTML = "";
     if (!messages.length) return;
-    messages.forEach(m => m.role === "user" ? addUser(m.content, true) : addBot(m.content, true));
+    messages.forEach(m => m.role === "user" ? addUser(m.content, true) : (m.imgPrompt ? addImageMsg(m, true) : addBot(m.content, true)));
     toBottom(true);
   }
 
@@ -1006,6 +1086,7 @@
       "უპასუხე იმ ენაზე, რომლითაც მომხმარებელი წერს (ნაგულისხმევად ქართულად). იყავი ზუსტი, მკაფიო და არაზედმეტად ვრცელი.",
       "სტილი: პასუხი დაწერე დასრულებულად და ლამაზად ჩამოყალიბებულად, როგორც ყურადღებით დაწერილი ტექსტი: ჯერ პირდაპირ და მოკლედ უპასუხე კითხვას, მერე საჭიროებისას დაამატე დეტალები. გრძელ პასუხებში გამოიყენე მოკლე სათაურები (## ...), სიები, **მუქი** მთავარი სიტყვები და შედარებისას ცხრილი. ბოლოს, საჭიროებისას, დაამატე მოკლე რჩევა ან დასკვნა. ზედმეტი შესავალი და გამეორება არ გამოიყენო და პასუხი ნახევარი არ დატოვო.",
       "ფაილები და კოდი: თუ მომხმარებელი გვერდს, აპლიკაციას, სკრიპტს ან ფაილს ითხოვს (ან კოდი 15 ხაზზე გრძელია), მთლიანი კოდი ჩასვი ერთ ბლოკში და ფაილის სახელი ღობეზე მიუთითე, მაგალითად ```html Index.html ან ```python main.py. ფაილი ნაწილებად არ დაყო. ბლოკის გარეთ ორ-სამ წინადადებაში ახსენი, რას აკეთებს და როგორ გაუშვას. კოდი ტექსტში აღარ გაიმეორო. მოკლე ილუსტრაციის კოდს (15 ხაზამდე) ფაილის სახელი არ სჭირდება.",
+      "შენ შეგიძლია სურათების დახატვაც: ამისთვის მომხმარებელმა უნდა დააჭიროს ველის მარცხენა მხარეს სურათის ღილაკს ან დაწეროს „დამიხატე ...“. არასოდეს თქვა, რომ სურათის გენერირება შეუძლებელია; უბრალოდ აუხსენი ეს ორი გზა.",
       "თუ მსჯელობისას მოკლე შეჯამებებს წერ, ისინი ქართულად დაწერე.",
       "ფორმატი: Markdown (აბზაცები, სიები, **მუქი**, ცხრილები, კოდის ბლოკები). არ გამოიყენო LaTeX და $ ფორმულები. ისრებისთვის გამოიყენე → სიმბოლო."
     ].join("\n");
@@ -1017,6 +1098,9 @@
     const code = String((e && (e.code || e.error)) || "").toLowerCase();
     const status = (e && (e.status || e.statusCode)) || 0;
     const raw = String((e && e.message) || (typeof err === "string" ? err : "") || "");
+    const ec = String((e && e.errorCode) || "").toLowerCase();
+    if (ec === "moderation_flagged" || /moderation|safety|content.?policy/i.test(raw)) return "ეს აღწერა უსაფრთხოების ფილტრმა დაბლოკა. სცადე სხვაგვარად ჩამოაყალიბე.";
+    if (code === "upstream_failed") return "სურათის დახატვა ვერ მოხერხდა. სცადე თავიდან.";
     if (code === "insufficient_funds" || status === 402) return "შენი Puter-ის უფასო ყოველთვიური ლიმიტი ამოიწურა. ახალი ლიმიტი მომდევნო თვეში განახლდება, ან შეგიძლია Puter-ზე კრედიტი შეიძინო." + (tierIdx > 0 ? " სცადე MOON 1.0, ის ნაკლებს ხარჯავს." : "");
     if (code === "subscription_required") return "ამ მოდელს Puter-ის ფასიანი გეგმა სჭირდება. სცადე სხვა მოდელი.";
     if (code === "too_many_requests" || status === 429) return "ძალიან ბევრი მოთხოვნა ერთდროულად. რამდენიმე წამში სცადე თავიდან.";
@@ -1043,6 +1127,8 @@
     const text = inputEl.value.trim();
     if (!text) return;
 
+    const imageMode = imgOn || IMG_RE.test(text);
+    setImgMode(false);
     if (!messages.length) wrap.innerHTML = "";
     messages.push({ role: "user", content: text });
     addUser(text);
@@ -1176,9 +1262,63 @@
       }
     }
 
+    // სურათი: ჯერ ქართულ აღწერას ინგლისურ დეტალურ პრომპტად ვაქცევთ, მერე ვხატავთ
+    async function generateImage() {
+      let prev = "";
+      for (let i = messages.length - 2; i >= 0; i--) if (messages[i].imgPrompt) { prev = messages[i].imgPrompt; break; }
+      step("ვამზადებ სურათის აღწერას");
+      let en = text;
+      const askMsgs = [{ role: "system", content: IMG_SYS },
+        { role: "user", content: (prev ? "Previous image prompt: " + prev + "\n\nUser request (may modify the previous image): " : "User request: ") + text }];
+      for (const mdl of [TIERS[0].models[0], null]) {
+        try {
+          const o = { stream: false, normalize: true, max_tokens: 350, signal: ctrl.signal };
+          if (mdl) o.model = mdl;
+          const r = await puter.ai.chat(askMsgs, o);
+          let c = r && r.message && r.message.content;
+          if (Array.isArray(c)) c = c.map(x => (x && x.text) || "").join("");
+          if (typeof c === "string" && c.trim()) { en = c.trim().replace(/^["\u201C]|["\u201D]$/g, "").slice(0, 1200); break; }
+        } catch (e) { if (userStopped || ctrl.signal.aborted) return null; }
+      }
+      if (userStopped) return null;
+      step("ვხატავ სურათს");
+      ansEl.innerHTML = '<div class="imgwait"></div>';
+      toBottom();
+      let ratio = pickRatio(text), img = null, mi = 0;
+      for (let k = 0; k < 6 && !img; k++) {
+        const o = { quality: IMG_QUALITY[tierIdx] };
+        if (IMG_MODELS[mi]) o.model = IMG_MODELS[mi];
+        if (ratio) o.ratio = ratio;
+        try { img = await puter.ai.txt2img(en, o); }
+        catch (e) {
+          if (userStopped) return null;
+          const msg = String((e && e.message) || "").toLowerCase();
+          if (ratio && /ratio|size|dimension|bad_request/.test(msg + String(e && e.code))) { ratio = null; continue; }
+          if (mi < IMG_MODELS.length && isModelProblem(e)) { mi++; step("ვცდი სხვა გზით"); continue; }
+          throw e;
+        }
+      }
+      if (userStopped) return null;
+      if (!img || !img.src) throw new Error("სურათი ვერ მივიღე, სცადე თავიდან.");
+      const src = await toBlobUrl(img.src);
+      const probe = new Image();
+      await new Promise(res => { probe.onload = probe.onerror = res; probe.src = src; });
+      return { src, en, thumb: thumbOf(probe) };
+    }
+
     try {
       if (typeof puter === "undefined" || !puter.ai) {
         throw new Error("Puter ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
+      }
+      if (imageMode) {
+        const out = await generateImage();
+        if (!out) { bot.remove(); messages.pop(); return; }
+        finishThink();
+        ansEl.innerHTML = "";
+        ansEl.appendChild(imageCard(out.src, text, true));
+        messages.push({ role: "assistant", content: "[დახატული სურათი: " + text + "]", image: out.thumb, imgPrompt: text });
+        saveChat();
+        return;
       }
       // ვცდით რიგით: თუ მოდელი ვერ მოიძებნა, შემდეგს; თუ ძებნა არ ჩაიარა, ძებნის გარეშე
       let search = WEB_SEARCH, mi = 0;
