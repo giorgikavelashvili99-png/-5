@@ -89,7 +89,7 @@ const PROVIDERS = [
 const ORDER = list(process.env.FALLBACK_ORDER, "groq,ollama,openrouter");
 PROVIDERS.sort((x, y) => { const i = ORDER.indexOf(x.name), j = ORDER.indexOf(y.name); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); });
 const HAS_ANY_KEY = () => !!API_KEY || PROVIDERS.length > 0;
-const NO_SEARCH_NOTE = "\nქართულად წერე მოკლე, მარტივ და გრამატიკულად სწორ წინადადებებში; იშვიათ ან გაურკვეველ სიტყვებს ერიდე და ისეთი სიტყვა არ მოიგონო, რომელშიც დარწმუნებული არ ხარ.\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
+const NO_SEARCH_NOTE = "\nქართულად წერე მოკლე, მარტივ და გრამატიკულად სწორ წინადადებებში; იშვიათ ან გაურკვეველ სიტყვებს ერიდე და ისეთი სიტყვა არ მოიგონო, რომელშიც დარწმუნებული არ ხარ. სანამ პასუხს დაწერ, გაიაზრე კითხვა სრულად (მაგალითად, „რა ენები იცი“ ადამიანურ ენებს გულისხმობს, თუ პროგრამირებაზე არ ეკითხებიან), და დაწერილი წინადადებები ბრუნვებისა და ზმნის ფორმების მხრივ გადაამოწმე.\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
 
 async function openAiChain(system, messages, signal) {
   for (const prov of PROVIDERS) {
@@ -100,6 +100,7 @@ async function openAiChain(system, messages, signal) {
           headers: { "content-type": "application/json", ...(prov.key !== "local" ? { authorization: "Bearer " + prov.key } : {}) },
           body: JSON.stringify({
             model, stream: true, max_tokens: 4096, temperature: 0.3, // დაბალი ტემპერატურა = ნაკლები მოგონილი სიტყვა
+            ...(/gpt-oss/i.test(model) ? { reasoning_effort: "high" } : {}), // მეტი დაფიქრება = უფრო გასწორებული ტექსტი
             messages: [{ role: "system", content: system + NO_SEARCH_NOTE }, ...messages.map(m => ({ role: m.role, content: m.content }))]
           })
         });
