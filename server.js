@@ -306,6 +306,90 @@ function cleanMessages(input) {
   return out;
 }
 
+
+// ---------- სურათის სარეზერვო გზა (OpenAI-ს სურათის მოდელი) ----------
+// Puter-ის ბალანსის ამოწურვის შემდეგ სურათს ეს ხატავს. ფასიანია, ამიტომ დღიური ლიმიტი გვაქვს (IMAGE_DAILY_LIMIT, ნაგულისხმევი 40).
+const IMG_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+const OPENAI_BASE = process.env.OPENAI_BASE || "https://api.openai.com/v1";
+const IMG_MAX = parseInt(process.env.IMAGE_DAILY_LIMIT || "40", 10);
+let imgDay = "", imgCount = 0;
+const IMG_SYS = "You write ONE detailed, vivid English prompt for a text-to-image model from the user's request. Keep the subject, style, mood, colors, composition and format. For realistic photos describe camera, lighting and lens. Output ONLY the prompt, no quotes, at most 120 words.";
+const IMG_SYS_EDIT = "You turn the user's request into ONE concise English instruction for an image model that receives the user's own photo(s). Keep the people, objects and composition unless asked to change them. Describe only the desired change or style. Output ONLY the instruction, no quotes, at most 80 words.";
+
+async function imagePrompt(prompt, edit, signal) {
+  if (!/[Ⴀ-ჿ]/.test(prompt)) return prompt;          // უკვე ინგლისურია
+  try {
+    const m = list(process.env.OPENAI_MODELS, "gpt-6-luna")[0];
+    const r = await fetch(OPENAI_BASE + "/chat/completions", {
+      method: "POST", signal: AbortSignal.any ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : signal,
+      headers: { "content-type": "application/json", authorization: "Bearer " + OPENAI_KEY },
+      body: JSON.stringify({ model: m, max_completion_tokens: 400, messages: [{ role: "system", content: edit ? IMG_SYS_EDIT : IMG_SYS }, { role: "user", content: prompt }] })
+    });
+    if (!r.ok) throw new Error("p" + r.status);
+    const j = await r.json();
+    const t = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (typeof t === "string" && t.trim()) return t.trim().replace(/^["“]|["”]$/g, "").slice(0, 1200);
+  } catch (e) { note("img-prompt", 0); }
+  return prompt;
+}
+
+async function image(req, res) {
+  cors(res, req);
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  if (!OPENAI_KEY) return json(res, 501, { error: "not configured" });
+  if (limited(ip)) return json(res, 429, { error: "ძალიან ბევრი მოთხოვნაა. ერთი წუთით მოიცადე." });
+  let body;
+  try { body = JSON.parse(await readBody(req, 8_000_000)); }
+  catch { return json(res, 400, { error: "არასწორი მოთხოვნა." }); }
+  const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 2000).trim() : "";
+  if (!prompt) return json(res, 400, { error: "ცარიელი მოთხოვნა." });
+  const photos = Array.isArray(body.photos) ? body.photos.slice(0, 4).filter(x => typeof x === "string" && /^data:image\/(png|jpe?g|webp);base64,/i.test(x)) : [];
+  const day = new Date().toISOString().slice(0, 10);
+  if (day !== imgDay) { imgDay = day; imgCount = 0; }
+  if (imgCount >= IMG_MAX) return json(res, 429, { error: "daily" });
+  imgCount++;
+  const quality = ["low", "medium", "high"].includes(body.quality) ? body.quality : "low";
+  const rt = body.ratio && body.ratio.w && body.ratio.h ? body.ratio.w / body.ratio.h : 1;
+  const size = rt > 1.2 ? "1536x1024" : rt < 0.83 ? "1024x1536" : "1024x1024";
+  const ctrl = new AbortController();
+  res.on("close", () => ctrl.abort());
+  try {
+    const p = await imagePrompt(prompt, photos.length > 0, ctrl.signal);
+    let r;
+    const signal = AbortSignal.any ? AbortSignal.any([ctrl.signal, AbortSignal.timeout(170000)]) : ctrl.signal;
+    if (photos.length) {
+      const fd = new FormData();
+      fd.append("model", IMG_MODEL); fd.append("prompt", p); fd.append("quality", quality); fd.append("size", size);
+      photos.forEach((d, i) => {
+        const m = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(d);
+        const ext = /png/.test(m[1]) ? "png" : /webp/.test(m[1]) ? "webp" : "jpg";
+        fd.append("image[]", new Blob([Buffer.from(m[2], "base64")], { type: m[1] }), "photo" + i + "." + ext);
+      });
+      r = await fetch(OPENAI_BASE + "/images/edits", { method: "POST", signal, headers: { authorization: "Bearer " + OPENAI_KEY }, body: fd });
+    } else {
+      r = await fetch(OPENAI_BASE + "/images/generations", {
+        method: "POST", signal,
+        headers: { "content-type": "application/json", authorization: "Bearer " + OPENAI_KEY },
+        body: JSON.stringify({ model: IMG_MODEL, prompt: p, quality, size, n: 1 })
+      });
+    }
+    if (!r.ok) {
+      note("image-" + r.status, r.status);
+      imgCount = Math.max(0, imgCount - 1);
+      return json(res, 502, { error: "image failed", status: r.status });
+    }
+    const j = await r.json();
+    const d = j && j.data && j.data[0];
+    const out = d && d.b64_json ? "data:image/png;base64," + d.b64_json : (d && d.url) || "";
+    if (!out) { imgCount = Math.max(0, imgCount - 1); return json(res, 502, { error: "empty" }); }
+    lastUsed = "image:" + IMG_MODEL;
+    return json(res, 200, { image: out });
+  } catch (e) {
+    imgCount = Math.max(0, imgCount - 1);
+    if (!res.headersSent) return json(res, 502, { error: "image failed" });
+  }
+}
+
 async function chat(req, res) {
   cors(res, req);
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
@@ -480,15 +564,16 @@ const INDEX = path.join(__dirname, "Index.html");
 const server = http.createServer(async (req, res) => {
   const url = (req.url || "/").split("?")[0];
 
-  if (req.method === "OPTIONS" && url === "/api/chat") {
+  if (req.method === "OPTIONS" && (url === "/api/chat" || url === "/api/image")) {
     cors(res, req);
     res.writeHead(204);
     return res.end();
   }
   if (req.method === "POST" && url === "/api/chat") return chat(req, res);
+  if (req.method === "POST" && url === "/api/image") return image(req, res);
 
   if (req.method === "GET" && url === "/health") {
-    return json(res, 200, { ok: true, version: "fallback-9-openai", search: !!OLLAMA_KEY, lastFallback: lastUsed,
+    return json(res, 200, { ok: true, version: "fallback-10-images", search: !!OLLAMA_KEY, lastFallback: lastUsed,
       keys: { gemini: !!API_KEY, openai: !!OPENAI_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
   }
 

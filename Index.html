@@ -235,7 +235,7 @@
     flex: 1; resize: none; max-height: 190px; min-height: 28px; background: none; border: 0; outline: 0;
     color: var(--text); font: inherit; font-size: 16px; line-height: 1.55; padding: 8px 4px; caret-color: var(--accent);
   }
-  textarea::placeholder { color: var(--muted); }
+  textarea::placeholder { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tool { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); flex: none; transition: color .18s, background .18s, transform .18s var(--ease); }
   .tool svg { width: 21px; height: 21px; }
   .tool:hover { color: var(--text); background: var(--surface2); }
@@ -345,7 +345,7 @@
     <button class="tool" id="attBtn" type="button" aria-label="ფოტოს ატვირთვა" title="ფოტოს ატვირთვა"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
     <input type="file" id="fileIn" accept="image/*" multiple hidden>
     <button class="tool" id="imgBtn" type="button" aria-pressed="false" aria-label="სურათის დახატვა" title="სურათის დახატვა"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.5 3.5 3.5 3-3 5 5"/></svg></button>
-    <textarea id="input" rows="1" placeholder="დაწერე შეკითხვა..." aria-label="შეკითხვა"></textarea>
+    <textarea id="input" rows="1" placeholder="დაწერე..." aria-label="შეკითხვა"></textarea>
     <button id="send" aria-label="გაგზავნა" disabled></button>
   </div>
   <div class="hint"><span class="warn">MOON AI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია გადაამოწმე.</span><span class="pw">Powered by <a href="https://developer.puter.com" target="_blank" rel="noopener noreferrer">Puter</a></span></div>
@@ -800,7 +800,7 @@
   function setImgMode(on) {
     imgOn = on;
     imgBtn.setAttribute("aria-pressed", on ? "true" : "false");
-    inputEl.placeholder = on ? "აღწერე სურათი, რომლის დახატვაც გინდა..." : "დაწერე შეკითხვა...";
+    inputEl.placeholder = on ? "აღწერე სურათი..." : "დაწერე...";
     if (on) inputEl.focus();
   }
   imgBtn.addEventListener("click", () => setImgMode(!imgOn));
@@ -1532,7 +1532,7 @@
     }
 
     // სურათი: ჯერ ქართულ აღწერას ინგლისურ დეტალურ პრომპტად ვაქცევთ, მერე ვხატავთ
-    async function generateImage() {
+    async function generateImage(skipPuter) {
       let prev = "";
       for (let i = messages.length - 2; i >= 0; i--) if (messages[i].imgPrompt) { prev = messages[i].imgPrompt; break; }
       const withPhotos = photos.length > 0;
@@ -1541,7 +1541,7 @@
       const askMsgs = [{ role: "system", content: withPhotos ? IMG_SYS_EDIT : IMG_SYS },
         { role: "user", content: withPhotos ? "User request about the attached photo(s): " + text
           : (prev ? "Previous image prompt: " + prev + "\n\nUser request (may modify the previous image): " : "User request: ") + text }];
-      for (const mdl of [TIERS[0].models[0], null]) {
+      for (const mdl of (skipPuter ? [] : [TIERS[0].models[0], null])) {
         try {
           const o = { stream: false, normalize: true, max_tokens: 350, signal: ctrl.signal };
           if (mdl) o.model = mdl;
@@ -1557,7 +1557,28 @@
       toBottom();
       let ratio = pickRatio(text), img = null, mi = 0;
       const models = withPhotos ? IMG_EDIT_MODELS : IMG_MODELS;
-      for (let k = 0; k < 6 && !img; k++) {
+      // სარეზერვო გზა სურათისთვის: საკუთარი სერვერი
+      async function serverImage() {
+        const r = await fetch("/api/image", {
+          method: "POST", signal: ctrl.signal, headers: { "content-type": "application/json" },
+          body: JSON.stringify({ prompt: en === text ? text : en, quality: TIERS[tierIdx].img, ratio, photos: withPhotos ? photos.map(p => p.full) : [] })
+        });
+        if (!r.ok) { const e = new Error("server"); e.status = r.status; e.fromServer = true; throw e; }
+        const j = await r.json();
+        if (!j || !j.image) { const e = new Error("server"); e.fromServer = true; throw e; }
+        return { src: j.image };
+      }
+      const viaServerImg = async firstE => {
+        step("ვცდი სხვა გზით");
+        try { return await serverImage(); }
+        catch (e2) {
+          if (userStopped || ctrl.signal.aborted) return null;
+          if (e2 && e2.fromServer && (e2.status === 501 || e2.status === 404)) throw firstE;   // სერვერზე სურათის გზა არ არის
+          throw Object.assign(new Error("busy"), { code: "all_busy" });
+        }
+      };
+      if (skipPuter) img = await viaServerImg(Object.assign(new Error("limit"), { code: "insufficient_funds", status: 402 }));
+      for (let k = 0; k < 6 && !img && !userStopped; k++) {
         const o = { quality: TIERS[tierIdx].img };
         if (models[mi]) o.model = models[mi];
         if (withPhotos) { o.input_image = photos[0].full; o.input_images = photos.map(p => p.full); }
@@ -1565,6 +1586,7 @@
         try { img = await puter.ai.txt2img(en, o); }
         catch (e) {
           if (userStopped) return null;
+          if (isLimitError(e)) { img = await viaServerImg(e); break; }
           const msg = String((e && e.message) || "").toLowerCase();
           if (ratio && /ratio|size|dimension|bad_request/.test(msg + String(e && e.code))) { ratio = null; continue; }
           if (mi < models.length && isModelProblem(e)) { mi++; step("ვცდი სხვა გზით"); continue; }
@@ -1586,9 +1608,7 @@
       let firstErr = noBalance ? limitErr() : null;
       let viaServer = !havePuter || noBalance;
       if (imageMode) {
-        if (!havePuter) throw new Error("სერვისი ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
-        if (noBalance) throw limitErr();
-        const out = await generateImage();
+        const out = await generateImage(noBalance || !havePuter);
         if (!out) { bot.remove(); messages.pop(); return; }
         finishThink();
         ansEl.innerHTML = "";
