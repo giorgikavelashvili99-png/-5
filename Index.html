@@ -281,24 +281,7 @@
   #send:hover:not(:disabled) { transform: scale(1.06); }
   #send:active:not(:disabled) { transform: scale(.92); }
   #send:disabled { background: var(--surface2); color: var(--muted); cursor: default; }
-  .ver-wrap { position: relative; margin-right: 4px; }
-  .ver { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: .12em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 11px 6px 13px; white-space: nowrap; transition: color .18s, border-color .18s; }
-  .ver:hover, .ver[aria-expanded="true"] { color: var(--text); border-color: var(--line2); }
-  .ver svg { transition: transform .2s var(--ease); }
-  .ver[aria-expanded="true"] svg { transform: rotate(180deg); }
-  .vermenu {
-    position: absolute; right: 0; top: calc(100% + 10px); width: min(300px, calc(100vw - 32px)); z-index: 15;
-    background: var(--surface); border: 1px solid var(--line2); border-radius: 18px; padding: 6px;
-    box-shadow: 0 18px 50px rgba(0,0,0,.55); opacity: 0; transform: translate3d(0, -6px, 0); pointer-events: none; visibility: hidden;
-    transition: opacity .18s, transform .22s var(--ease), visibility 0s .22s;
-  }
-  .vermenu.open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .18s, transform .22s var(--ease), visibility 0s; }
-  .vopt { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; border-radius: 13px; text-align: left; transition: background .15s; }
-  .vopt:hover { background: var(--surface2); }
-  .vopt b { display: block; font-size: 14px; font-weight: 600; letter-spacing: .1em; color: var(--text); }
-  .vopt small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--muted); letter-spacing: 0; line-height: 1.45; }
-  .vopt svg { width: 18px; height: 18px; color: var(--accent); flex: none; opacity: 0; }
-  .vopt.on svg { opacity: 1; }
+  .ver { display: flex; align-items: center; font-size: 12px; font-weight: 600; letter-spacing: .12em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; white-space: nowrap; user-select: none; }
   .hint .pw::before { content: "·"; margin: 0 8px; opacity: .6; }
   .hint .pw a { color: inherit; text-decoration: none; border-bottom: 1px solid var(--line2); transition: color .18s; }
   .hint .pw a:hover { color: var(--text); }
@@ -331,10 +314,7 @@
       <b>MOON AI</b>
     </button>
   </div>
-  <div class="ver-wrap">
-    <button class="ver" id="verBtn" aria-haspopup="true" aria-expanded="false"><span id="verName">MOON 1.0</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
-    <div class="vermenu" id="verMenu" role="menu"></div>
-  </div>
+  <span class="ver" id="verName">MOON 1.0</span>
 </header>
 
 <div class="ptr" id="ptr" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg></div>
@@ -378,13 +358,10 @@
 <script>
 (function () {
   // პარამეტრები. მოდელების სია: https://developer.puter.com/ai/models/
-  // MOON-ის ვერსიები. თითოეულს რამდენიმე მოდელი აქვს რიგით: პირველი, რომელსაც Puter მიიღებს, იმუშავებს.
-  // თუ ვერსიის ვერც ერთი მოდელი ვერ მოიძებნა, Puter-ის ნაგულისხმევი მოდელი გამოიყენება.
+  // MOON 1.0: მოდელები რიგით ვცადოთ, პირველი, რომელსაც სერვისი მიიღებს, იმუშავებს.
+  // თუ არცერთი ვერ მოიძებნა, ნაგულისხმევი მოდელი გამოიყენება.
   const TIERS = [
-    { name: "MOON 1.0", desc: "სწრაფი და იაფი, ყოველდღიური კითხვებისთვის", models: ["openai/gpt-6-luna", "anthropic/claude-haiku-5-5", "gpt-5.4-nano"] },
-    { name: "MOON 2.0", desc: "დაბალანსებული: სიჩქარე და სიზუსტე", models: ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"] },
-    { name: "MOON 3.0", desc: "ძლიერი: რთული კითხვები და კოდი", models: ["anthropic/claude-opus-5-5", "openai/gpt-6-sol-pro"] },
-    { name: "MOON 4.0", desc: "ყველაზე ძლიერი. ლიმიტს უფრო სწრაფად ხარჯავს", models: ["anthropic/claude-fable-5-1", "openai/gpt-6-astra"] }
+    { name: "MOON 1.0", models: ["openai/gpt-6-luna", "anthropic/claude-haiku-5-5", "gpt-5.4-nano"] }
   ];
   // ინტერნეტში ძებნა (ახალი ამბები, ფასები). თუ მოდელი ვერ უჭერს მხარს, ჩატი თავისით ძებნის გარეშე გააგრძელებს
   const WEB_SEARCH = true;
@@ -785,7 +762,7 @@
 
   // ---------- სურათის დახატვა ----------
   const IMG_MODELS = ["gpt-image-2.5-flare", "gpt-image-2"];      // თანმიმდევრობით ვცდით; ბოლოს Puter-ის ნაგულისხმევი
-  const IMG_QUALITY = ["low", "medium", "high", "high"];          // MOON-ის ვერსიის მიხედვით
+  const IMG_QUALITY = ["low"];
   const IMG_EDIT_MODELS = ["gpt-image-2", "gemini-3.1-flash-image"];   // ფოტოდან მუშაობა
   const IMG_SYS_EDIT = "You turn the user's request into ONE concise English instruction for an image model that receives the user's own photo(s). Keep the people, objects and composition of the photo(s) unless the user asks to change them. Describe only the desired change or style. Output ONLY the instruction, no quotes, at most 80 words.";
   const IMG_SYS = "You write ONE detailed, vivid English prompt for a text-to-image model. Keep the user's subject, style, mood, colors, composition and any format details. For realistic photos describe camera, lighting and lens. Do not add text overlays unless asked. If a previous image prompt is given and the user asks for a change, apply the change to it. Output ONLY the prompt, no quotes, no explanation, at most 120 words.";
@@ -1222,42 +1199,8 @@
   chatEl.addEventListener("touchend", endPull, { passive: true });
   chatEl.addEventListener("touchcancel", endPull, { passive: true });
 
-  // ---------- ვერსიის არჩევა ----------
-  let tierIdx = 0;
-  try { const v = parseInt(localStorage.getItem("moon_ai_tier"), 10); if (v >= 0 && v < TIERS.length) tierIdx = v; } catch (e) {}
-  const verBtn = document.getElementById("verBtn");
-  const verMenu = document.getElementById("verMenu");
-  const verName = document.getElementById("verName");
-  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
-  function renderTiers() {
-    verName.textContent = TIERS[tierIdx].name;
-    verMenu.innerHTML = "";
-    TIERS.forEach((t, i) => {
-      const b = document.createElement("button");
-      b.className = "vopt" + (i === tierIdx ? " on" : "");
-      b.setAttribute("role", "menuitemradio");
-      b.setAttribute("aria-checked", i === tierIdx ? "true" : "false");
-      b.innerHTML = "<span><b></b><small></small></span>" + CHECK;
-      b.querySelector("b").textContent = t.name;
-      b.querySelector("small").textContent = t.desc;
-      b.addEventListener("click", () => {
-        tierIdx = i;
-        try { localStorage.setItem("moon_ai_tier", String(i)); } catch (e) {}
-        renderTiers(); closeTiers();
-      });
-      verMenu.appendChild(b);
-    });
-  }
-  function closeTiers() { verMenu.classList.remove("open"); verBtn.setAttribute("aria-expanded", "false"); }
-  verBtn.addEventListener("click", e => {
-    e.stopPropagation();
-    const open = !verMenu.classList.contains("open");
-    verMenu.classList.toggle("open", open);
-    verBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  });
-  document.addEventListener("click", e => { if (!verMenu.contains(e.target)) closeTiers(); });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeTiers(); });
-  renderTiers();
+  const tierIdx = 0;
+  try { localStorage.removeItem("moon_ai_tier"); } catch (e) {}
 
   // ყოველ კითხვაზე მოდელს დღევანდელ თარიღს ვაძლევთ, რომ ძველ წლებზე არ გაჩერდეს
   function systemPrompt() {
@@ -1291,8 +1234,8 @@
       return "სურათის სერვისმა ეს აღწერა დაბლოკა. ასეთი ფილტრი ხშირად რეაგირებს რეალური, ცნობილი ადამიანების სახელებზე (სპორტსმენები, პოლიტიკოსები, არტისტები). სცადე უსახელო ან გამოგონილი პერსონაჟები.";
     }
     if (code === "upstream_failed") return "სურათის დახატვა ვერ მოხერხდა. სცადე თავიდან.";
-    if (code === "insufficient_funds" || status === 402) return "გამოყენების ლიმიტი ამოიწურა. ის თვეში ერთხელ ახლდება." + (tierIdx > 0 ? " სცადე MOON 1.0, ის ნაკლებს ხარჯავს." : "");
-    if (code === "subscription_required") return "ეს ვერსია ახლა მიუწვდომელია. სცადე MOON 1.0.";
+    if (code === "insufficient_funds" || status === 402) return "გამოყენების ლიმიტი ამოიწურა. ის თვეში ერთხელ ახლდება.";
+    if (code === "subscription_required") return "ეს ფუნქცია ახლა მიუწვდომელია. სცადე მოგვიანებით.";
     if (code === "too_many_requests" || status === 429) return "ძალიან ბევრი მოთხოვნა ერთდროულად. რამდენიმე წამში სცადე თავიდან.";
     if (code === "auth_window_closed") return "გასაგრძელებლად ანგარიშით შესვლაა საჭირო. გაგზავნე თავიდან და დაასრულე შესვლა.";
     if (code === "popup_blocked") return "ბრაუზერმა შესვლის ფანჯარა დაბლოკა. ნება დართე pop-up-ებს ამ საიტზე და გაგზავნე თავიდან.";
@@ -1313,6 +1256,27 @@
     const t = (String((err && (err.message || (err.error && err.error.message))) || "") + " " + String((err && err.code) || "")).toLowerCase();
     return /tool|web_search|search|unsupported|not support|invalid_request|bad_request|400/.test(t);
   };
+
+  // გამოძახებამდე ვამოწმებთ ლიმიტს, რომ სერვისის საკუთარი ფანჯარა არ გამოვიდეს
+  async function outOfBalance() {
+    try {
+      if (!puter.auth || !puter.auth.getMonthlyUsage || !puter.auth.isSignedIn()) return false;
+      const u = await puter.auth.getMonthlyUsage();
+      const r = u && u.allowanceInfo && u.allowanceInfo.remaining;
+      return typeof r === "number" && isFinite(r) && r <= 0;
+    } catch (e) { return false; }
+  }
+
+  // სერვისის ჩაშენებული "Low Balance" ფანჯრის დამალვა (საუკეთესო მცდელობა)
+  new MutationObserver(list => {
+    for (const m of list) for (const n of m.addedNodes) {
+      if (n.nodeType !== 1 || n.id === "app" || n.closest && n.closest("#app")) continue;
+      const t = (n.textContent || "").toLowerCase();
+      if (t.includes("upgrade") && (t.includes("balance") || t.includes("funding"))) {
+        n.style.setProperty("display", "none", "important");
+      }
+    }
+  }).observe(document.body, { childList: true });
 
   async function send() {
     if (busy) return;
@@ -1511,6 +1475,7 @@
       if (typeof puter === "undefined" || !puter.ai) {
         throw new Error("სერვისი ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
       }
+      if (await outOfBalance()) throw Object.assign(new Error("limit"), { code: "insufficient_funds", status: 402 });
       if (imageMode) {
         const out = await generateImage();
         if (!out) { bot.remove(); messages.pop(); return; }
