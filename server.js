@@ -58,22 +58,43 @@ function systemPrompt(tz) {
 const GROQ_KEY = process.env.GROQ_API_KEY || "";
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
 const list = (v, d) => (v || d).split(",").map(x => x.trim()).filter(Boolean);
+// Ollama: ღრუბლოვანი (ollama.com + OLLAMA_API_KEY) ან შენი საკუთარი კომპიუტერი (OLLAMA_URL=https://შენი-მისამართი/v1/chat/completions)
+const OLLAMA_KEY = process.env.OLLAMA_API_KEY || "";
+const OLLAMA_URL = process.env.OLLAMA_URL || (OLLAMA_KEY ? "https://ollama.com/v1/chat/completions" : "");
+let ollamaCache = { at: 0, models: [] };
+async function ollamaModels() {
+  const fixed = list(process.env.OLLAMA_MODELS, "");
+  if (fixed.length) return fixed;
+  if (Date.now() - ollamaCache.at < 3600_000 && ollamaCache.models.length) return ollamaCache.models;
+  try {
+    const base = OLLAMA_URL.replace(/\/v1\/chat\/completions.*$/, "");
+    const r = await fetch(base + "/api/tags", { headers: OLLAMA_KEY ? { authorization: "Bearer " + OLLAMA_KEY } : {} });
+    const j = await r.json();
+    const names = (j.models || []).map(m => m.name || m.model).filter(Boolean);
+    const size = n => { const m = /(\d+(?:\.\d+)?)b/i.exec(n); return m ? parseFloat(m[1]) : 0; };
+    const big = arr => arr.slice().sort((a, b) => size(b) - size(a)); // დიდი მოდელი ქართულს უკეთ წერს
+    const pick = [...big(names.filter(n => /qwen|llama/i.test(n))), ...big(names)].filter((n, i, a) => a.indexOf(n) === i).slice(0, 3);
+    if (pick.length) ollamaCache = { at: Date.now(), models: pick };
+  } catch (e) { note("ollama-tags", 0); }
+  return ollamaCache.models;
+}
 const PROVIDERS = [
   { name: "groq", url: process.env.GROQ_URL || "https://api.groq.com/openai/v1/chat/completions", key: GROQ_KEY,
-    models: list(process.env.GROQ_MODELS, "llama-3.3-70b-versatile,qwen/qwen3.8-27b,llama-3.1-8b-instant") },
+    models: list(process.env.GROQ_MODELS, "llama-3.3-70b-versatile,openai/gpt-oss-120b,qwen/qwen3.8-27b,llama-3.1-8b-instant") },
+  { name: "ollama", url: OLLAMA_URL, key: OLLAMA_KEY || (OLLAMA_URL ? "local" : ""), getModels: ollamaModels },
   { name: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: OPENROUTER_KEY,
     models: list(process.env.OPENROUTER_MODELS, "nvidia/nemotron-3.5-super-vl:free,xingchen-agi/xing4.0-29b-a4b:free") }
 ].filter(p => p.key);
 const HAS_ANY_KEY = () => !!API_KEY || PROVIDERS.length > 0;
-const NO_SEARCH_NOTE = "\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
+const NO_SEARCH_NOTE = "\nქართულად წერე მოკლე, მარტივ და გრამატიკულად სწორ წინადადებებში; იშვიათ ან გაურკვეველ სიტყვებს ერიდე და ისეთი სიტყვა არ მოიგონო, რომელშიც დარწმუნებული არ ხარ.\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
 
 async function openAiChain(system, messages, signal) {
   for (const prov of PROVIDERS) {
-    for (const model of prov.models) {
+    for (const model of (prov.getModels ? await prov.getModels() : prov.models)) {
       try {
         const r = await fetch(prov.url, {
           method: "POST", signal,
-          headers: { "content-type": "application/json", authorization: "Bearer " + prov.key },
+          headers: { "content-type": "application/json", ...(prov.key !== "local" ? { authorization: "Bearer " + prov.key } : {}) },
           body: JSON.stringify({
             model, stream: true, max_tokens: 4096,
             messages: [{ role: "system", content: system + NO_SEARCH_NOTE }, ...messages.map(m => ({ role: m.role, content: m.content }))]
@@ -131,6 +152,7 @@ async function pipeOpenAi(res, alt, ctrl) {
 
 // ბოლო შეცდომები (მხოლოდ სტატუსის კოდი), რომ /health-ზე დიაგნოსტიკა გამოჩნდეს; გასაღებები და ტექსტი აქ არ ხვდება
 const recent = [];
+let lastUsed = "";
 const note = (who, status) => { recent.push({ who, status, at: new Date().toISOString() }); if (recent.length > 8) recent.shift(); };
 
 const hits = new Map();
@@ -265,7 +287,7 @@ async function chat(req, res) {
 
   if (!opened && !ctrl.signal.aborted) {
     const alt = await openAiChain(system, messages, ctrl.signal);
-    if (alt) { console.error("გამოყენებულია სარეზერვო:", alt.prov, alt.model); return pipeOpenAi(res, alt, ctrl); }
+    if (alt) { console.error("გამოყენებულია სარეზერვო:", alt.prov, alt.model); lastUsed = alt.prov + ":" + alt.model; return pipeOpenAi(res, alt, ctrl); }
   }
   if (!opened) {
     // მომხმარებელს მომწოდებლის სახელს ან ტექნიკურ დეტალებს არ ვაჩვენებთ; ისინი მხოლოდ სერვერის ლოგშია
@@ -366,8 +388,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url === "/api/chat") return chat(req, res);
 
   if (req.method === "GET" && url === "/health") {
-    return json(res, 200, { ok: true, version: "fallback-2",
-      keys: { gemini: !!API_KEY, groq: !!GROQ_KEY, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
+    return json(res, 200, { ok: true, version: "fallback-3", lastFallback: lastUsed,
+      keys: { gemini: !!API_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
   }
 
   if (req.method === "GET" && (url === "/" || url === "/Index.html" || url === "/index.html")) {
