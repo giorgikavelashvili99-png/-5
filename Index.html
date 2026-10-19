@@ -1234,6 +1234,7 @@
     if (ec === "moderation_flagged" || /moderation|safety|content.?policy/i.test(raw)) {
       return "სურათის სერვისმა ეს აღწერა დაბლოკა. ასეთი ფილტრი ხშირად რეაგირებს რეალური, ცნობილი ადამიანების სახელებზე (სპორტსმენები, პოლიტიკოსები, არტისტები). სცადე უსახელო ან გამოგონილი პერსონაჟები.";
     }
+    if (code === "all_busy") return "ახლა ყველა სერვისი დატვირთულია. სცადე რამდენიმე წუთში.";
     if (code === "upstream_failed") return "სურათის დახატვა ვერ მოხერხდა. სცადე თავიდან.";
     if (code === "insufficient_funds" || status === 402) return "გამოყენების ლიმიტი ამოიწურა. ის თვეში ერთხელ ახლდება.";
     if (code === "subscription_required") return "ეს ფუნქცია ახლა მიუწვდომელია. სცადე მოგვიანებით.";
@@ -1553,9 +1554,16 @@
       if (viaServer && !answer && !userStopped) {
         if (!firstErr) step("ვცდი სხვა გზით");
         try { await runServer(); }
-        catch (e2) { if (e2 && e2.fromServer && firstErr) throw firstErr; throw e2; }
+        catch (e2) {
+          if (e2 && e2.fromServer && firstErr) {
+            // სერვერი არ არის (404): პირველი შეცდომა; სერვერი არის, მაგრამ ყველა სერვისი დატვირთულია: ცალკე ტექსტი
+            if (e2.status === 404) throw firstErr;
+            throw Object.assign(new Error("busy"), { code: "all_busy" });
+          }
+          throw e2;
+        }
       }
-      if (viaServer && !answer && !userStopped && firstErr) throw firstErr;
+      if (viaServer && !answer && !userStopped && firstErr) throw Object.assign(new Error("busy"), { code: "all_busy" });
       if (!answer && !userStopped) throw new Error("პასუხი ვერ მივიღე, სცადე თავიდან.");
       await reveal.end();
       const finalText = userStopped ? reveal.shown() : answer;

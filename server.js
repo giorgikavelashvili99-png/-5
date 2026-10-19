@@ -108,7 +108,6 @@ async function openAiChain(system, messages, signal) {
           headers: { "content-type": "application/json", ...(prov.key !== "local" ? { authorization: "Bearer " + prov.key } : {}) },
           body: JSON.stringify({
             model, stream: true, max_tokens: 4096, temperature: 0.3, // დაბალი ტემპერატურა = ნაკლები მოგონილი სიტყვა
-            ...(/gpt-oss/i.test(model) ? { reasoning_effort: "high" } : {}), // მეტი დაფიქრება = უფრო გასწორებული ტექსტი
             messages: [{ role: "system", content: system + NO_SEARCH_NOTE + GEO_GUIDE }, ...messages.map(m => ({ role: m.role, content: m.content }))]
           })
         });
