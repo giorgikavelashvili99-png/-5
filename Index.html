@@ -113,6 +113,24 @@
     background: var(--surface2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px;
     font-size: 13.5px; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text);
   }
+  .bubble li.sub { list-style-type: circle; margin-left: 20px; counter-increment: list-item 0; }
+  .bubble blockquote { margin: 14px 0; padding: 2px 0 2px 16px; border-left: 2px solid var(--line2); color: var(--muted); }
+  .bubble blockquote p { margin: 0 0 6px; }
+  .bubble hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
+  .tbl { margin: 14px 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+  .tbl table { border-collapse: collapse; width: 100%; font-size: 14.5px; line-height: 1.55; }
+  .tbl th, .tbl td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl th { color: var(--text); font-weight: 600; background: var(--surface); white-space: nowrap; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .status { padding: 6px 0; font-size: 15.5px; line-height: 1.6; }
+  .status span {
+    display: inline-block; color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-image: linear-gradient(100deg, #6f6f7a 30%, #ececf0 50%, #6f6f7a 70%); background-size: 250% 100%;
+    animation: shimmer 2.4s linear infinite;
+  }
+  .status span.swap { animation: shimmer 2.4s linear infinite, sIn .5s var(--ease) both; }
+  @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -150% 0; } }
+  @keyframes sIn { from { opacity: 0; transform: translate3d(0, 4px, 0); } to { opacity: 1; transform: none; } }
   .code { margin: 14px 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #0e0e11; }
   .code-h {
     display: flex; justify-content: space-between; align-items: center; padding: 8px 14px;
@@ -125,7 +143,7 @@
 
 
   /* სიტყვები რბილად ამოდის: მხოლოდ opacity, ამიტომ ლაგის გარეშეა და ტექსტი არ ცახცახებს */
-  .w, .blk { animation: wIn .9s cubic-bezier(.3, .6, .3, 1) both; }
+  .w, .blk { animation: wIn 1.2s cubic-bezier(.3, .6, .3, 1) both; }
   @keyframes wIn { from { opacity: 0; } to { opacity: 1; } }
 
   .ptr {
@@ -335,27 +353,60 @@
       return "\n\u0000" + (blocks.length - 1) + "\u0000\n";
     });
     t = esc(t);
-    let out = "", list = null;
-    const close = () => { if (list) { out += "</" + list + ">"; list = null; } };
-    for (const line of t.split("\n")) {
+    const lines = t.split("\n");
+    let out = "", list = null, quote = false;
+    const close = () => {
+      if (list) { out += "</" + list + ">"; list = null; }
+      if (quote) { out += "</blockquote>"; quote = false; }
+    };
+    const cells = l => l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map(c => c.trim());
+    const sepRe = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
+    const itemRe = /^(\s*)(?:[-*•]|(\d+)[.)])\s+(.*)$/;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       let m;
       if ((m = line.match(/^\u0000(\d+)\u0000$/))) {
         close();
         const b = blocks[+m[1]];
         out += '<div class="code"><div class="code-h"><span>' + esc(b.lang || "code") +
           '</span><button data-copy-code>კოპირება</button></div><pre><code>' + esc(b.code) + "</code></pre></div>";
-      } else if ((m = line.match(/^\s{0,3}(#{1,3})\s+(.*)$/))) {
+      } else if (line.includes("|") && i + 1 < lines.length && lines[i + 1].includes("|") && lines[i + 1].includes("-") && sepRe.test(lines[i + 1])) {
         close();
-        const lv = m[1].length + 1;
+        const head = cells(line);
+        const al = cells(lines[i + 1]).map(c => (/^:-+:$/.test(c) ? "center" : /-:$/.test(c) ? "right" : ""));
+        const td = (tag, c, j) => "<" + tag + (al[j] ? ' style="text-align:' + al[j] + '"' : "") + ">" + inline(c) + "</" + tag + ">";
+        let h = '<div class="tbl"><table><thead><tr>' + head.map((c, j) => td("th", c, j)).join("") + "</tr></thead><tbody>";
+        i += 2;
+        while (i < lines.length && lines[i].trim() && lines[i].includes("|")) {
+          h += "<tr>" + cells(lines[i]).map((c, j) => td("td", c, j)).join("") + "</tr>";
+          i++;
+        }
+        i--;
+        out += h + "</tbody></table></div>";
+      } else if ((m = line.match(/^\s{0,3}(#{1,4})\s+(.*)$/))) {
+        close();
+        const lv = Math.min(m[1].length + 1, 4);
         out += "<h" + lv + ">" + inline(m[2]) + "</h" + lv + ">";
-      } else if ((m = line.match(/^\s*[-*•]\s+(.*)$/))) {
-        if (list !== "ul") { close(); out += "<ul>"; list = "ul"; }
-        out += "<li>" + inline(m[1]) + "</li>";
-      } else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
-        if (list !== "ol") { close(); out += "<ol>"; list = "ol"; }
-        out += "<li>" + inline(m[1]) + "</li>";
-      } else if (!line.trim()) {
+      } else if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
         close();
+        out += "<hr>";
+      } else if ((m = line.match(/^\s*&gt;\s?(.*)$/))) {
+        if (!quote) { close(); out += "<blockquote>"; quote = true; }
+        out += "<p>" + inline(m[1]) + "</p>";
+      } else if ((m = line.match(itemRe))) {
+        const ordered = m[2] !== undefined;
+        const sub = m[1].length >= 2 && list;           // ჩაღრმავებული ქვეპუნქტი რჩება მიმდინარე სიაში
+        if (!sub) {
+          const want = ordered ? "ol" : "ul";
+          if (list !== want) { close(); out += want === "ol" && +m[2] !== 1 ? '<ol start="' + (+m[2]) + '">' : "<" + want + ">"; list = want; }
+        }
+        out += "<li" + (sub ? ' class="sub"' : "") + ">" + inline(m[3]) + "</li>";
+      } else if (!line.trim()) {
+        // ცარიელი ხაზი სიას არ წყვეტს, თუ შემდეგი უცარიელი ხაზიც იმავე სიის პუნქტია
+        let k = i + 1;
+        while (k < lines.length && !lines[k].trim()) k++;
+        const nx = k < lines.length ? lines[k].match(itemRe) : null;
+        if (!(list && nx && (nx[1].length >= 2 || (nx[2] !== undefined) === (list === "ol")))) close();
       } else {
         close();
         out += "<p>" + inline(line) + "</p>";
@@ -566,7 +617,7 @@
     toBottom(true);
   }
 
-  const WORD_MS = 900; // ერთი სიტყვის გამოჩენის ხანგრძლივობა (უნდა ემთხვეოდეს CSS-ის .w ანიმაციას)
+  const WORD_MS = 1200; // ერთი სიტყვის გამოჩენის ხანგრძლივობა (უნდა ემთხვეოდეს CSS-ის .w ანიმაციას)
   const REDUCE = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // პასუხის მშვიდი გამოჩენა: სიტყვები რბილად "ამოდის" (opacity), კითხვის კომფორტული ტემპით.
@@ -696,9 +747,9 @@
       const dt = Math.min(80, t - (last || t));
       last = t;
       const backlog = (full.slice(cut).match(/\S+/g) || []).length;
-      let rate = 16 + backlog * 0.35;                // სიტყვა წამში: მშვიდი ტემპი, რომელიც ჩამორჩენისას ოდნავ ჩქარდება
+      let rate = 10 + backlog * 0.25;                // სიტყვა წამში: მშვიდი ტემპი, რომელიც ჩამორჩენისას ოდნავ ჩქარდება
       if (done) rate = Math.max(rate, backlog / 6);  // დასრულების შემდეგ დარჩენილი დიდხანს არ გაგრძელდეს
-      rate = REDUCE ? 240 : Math.min(rate, 140);
+      rate = REDUCE ? 240 : Math.min(rate, 80);
       acc += rate * dt / 1000;
       const n = Math.floor(acc);
       if (n > 0) {
@@ -823,7 +874,8 @@
       "დღევანდელი თარიღია " + iso + (weekday ? " (" + weekday + ")" : "") + (tz ? ", დროის სარტყელი: " + tz : "") + ". ახლა " + now.getFullYear() + " წელია. არასოდეს თქვა, რომ 2024 ან უფრო ადრეა.",
       "თუ კითხვა ახალ ამბებს, ფასებს, მოვლენებს ან რაიმე ცვალებად ფაქტს ეხება და ძებნა გაქვს, გამოიყენე ძებნა.",
       "უპასუხე იმ ენაზე, რომლითაც მომხმარებელი წერს (ნაგულისხმევად ქართულად). იყავი ზუსტი, მკაფიო და არაზედმეტად ვრცელი.",
-      "ფორმატი: უბრალო Markdown (აბზაცები, სიები, **მუქი**, კოდის ბლოკები). არ გამოიყენო LaTeX და $ ფორმულები. ისრებისთვის გამოიყენე → სიმბოლო."
+      "სტილი: პასუხი დაწერე დასრულებულად და ლამაზად ჩამოყალიბებულად, როგორც ყურადღებით დაწერილი ტექსტი: ჯერ პირდაპირ და მოკლედ უპასუხე კითხვას, მერე საჭიროებისას დაამატე დეტალები. გრძელ პასუხებში გამოიყენე მოკლე სათაურები (## ...), სიები, **მუქი** მთავარი სიტყვები და შედარებისას ცხრილი. ბოლოს, საჭიროებისას, დაამატე მოკლე რჩევა ან დასკვნა. ზედმეტი შესავალი და გამეორება არ გამოიყენო და პასუხი ნახევარი არ დატოვო.",
+      "ფორმატი: Markdown (აბზაცები, სიები, **მუქი**, ცხრილები, კოდის ბლოკები). არ გამოიყენო LaTeX და $ ფორმულები. ისრებისთვის გამოიყენე → სიმბოლო."
     ].join("\n");
   }
 
@@ -865,13 +917,25 @@
     inputEl.value = ""; inputEl.style.height = "auto";
 
     const bot = addBot("");
-    bot._bubble.innerHTML = '<span class="thinking"><i></i><i></i><i></i></span>';
+    let answer = "", userStopped = false;
+    bot._bubble.innerHTML = '<div class="status"><span></span></div>';
+    const setStatus = t => {
+      if (answer) return;
+      const sp = bot._bubble.querySelector(".status span");
+      if (!sp || sp.textContent === t) return;
+      sp.classList.remove("swap"); void sp.offsetWidth;
+      sp.textContent = t; sp.classList.add("swap");
+    };
+    setStatus("კითხვას ვამუშავებ");
+    const timers = [
+      setTimeout(() => setStatus("ველოდები პასუხს. თუ Puter-ის შესვლის ფანჯარა გაიხსნა, დაასრულე შესვლა"), 6000),
+      setTimeout(() => setStatus("ცოტა მეტი დრო სჭირდება, ვაგრძელებ მუშაობას"), 22000)
+    ];
     stick = true; toBottom(true);
 
     busy = true; syncSend();
     ctrl = new AbortController();
     const reveal = createReveal(bot._bubble);
-    let answer = "", userStopped = false;
     stopFn = () => { userStopped = true; ctrl.abort(); reveal.stop(); };
 
     const keep = finalText => {
@@ -896,6 +960,18 @@
         if (part.type === "text" && part.text) {
           answer += part.text;
           reveal.push(part.text);
+        } else if (part.type === "reasoning" || part.type === "reasoning_start") {
+          setStatus("ვფიქრობ");
+        } else if (/tool|server|search/.test(String(part.type))) {
+          // ხელსაწყოს გამოძახება (ძებნა): თუ შეკითხვაც მოჰყვა, ვაჩვენებთ
+          let raw = ""; try { raw = JSON.stringify(part).toLowerCase(); } catch (e) {}
+          if (/search|web/.test(raw)) {
+            let q = "";
+            const cands = [part.input, part.block && part.block.input, part.block && part.block.action];
+            for (const c of cands) if (c && typeof c.query === "string") { q = c.query; break; }
+            q = q.replace(/\s+/g, " ").trim().slice(0, 70);
+            setStatus(q ? "ვეძებ ინტერნეტში: " + q : "ვეძებ ინტერნეტში");
+          } else setStatus("ინფორმაციას ვამუშავებ");
         } else if (part.type === "error") {
           const er = new Error(part.message || "error");
           er.code = part.code; er.status = part.status;
@@ -914,8 +990,8 @@
         try { await run(search, step); break; }
         catch (e) {
           if (answer || userStopped || ctrl.signal.aborted) throw e;
-          if (step < TIERS[tierIdx].models.length && isModelProblem(e)) { step++; continue; }
-          if (search && isSearchProblem(e)) { search = false; continue; }
+          if (step < TIERS[tierIdx].models.length && isModelProblem(e)) { step++; setStatus("ვცდი სხვა გზით"); continue; }
+          if (search && isSearchProblem(e)) { search = false; setStatus("ვფიქრობ"); continue; }
           throw e;
         }
       }
@@ -936,6 +1012,7 @@
         messages.pop();
       }
     } finally {
+      timers.forEach(clearTimeout);
       busy = false; ctrl = null; stopFn = null; syncSend(); toBottom();
       if (matchMedia("(hover: hover)").matches) inputEl.focus();
     }
