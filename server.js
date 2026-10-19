@@ -85,6 +85,9 @@ const PROVIDERS = [
   { name: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: OPENROUTER_KEY,
     models: list(process.env.OPENROUTER_MODELS, "nvidia/nemotron-3.5-super-vl:free,xingchen-agi/xing4.0-29b-a4b:free") }
 ].filter(p => p.key);
+// რიგი იცვლება ცვლადით, მაგ: FALLBACK_ORDER=ollama,groq,openrouter (პირველი ის, ვინც ქართულს უკეთ წერს)
+const ORDER = list(process.env.FALLBACK_ORDER, "groq,ollama,openrouter");
+PROVIDERS.sort((x, y) => { const i = ORDER.indexOf(x.name), j = ORDER.indexOf(y.name); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); });
 const HAS_ANY_KEY = () => !!API_KEY || PROVIDERS.length > 0;
 const NO_SEARCH_NOTE = "\nქართულად წერე მოკლე, მარტივ და გრამატიკულად სწორ წინადადებებში; იშვიათ ან გაურკვეველ სიტყვებს ერიდე და ისეთი სიტყვა არ მოიგონო, რომელშიც დარწმუნებული არ ხარ.\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
 
@@ -96,7 +99,7 @@ async function openAiChain(system, messages, signal) {
           method: "POST", signal,
           headers: { "content-type": "application/json", ...(prov.key !== "local" ? { authorization: "Bearer " + prov.key } : {}) },
           body: JSON.stringify({
-            model, stream: true, max_tokens: 4096,
+            model, stream: true, max_tokens: 4096, temperature: 0.3, // დაბალი ტემპერატურა = ნაკლები მოგონილი სიტყვა
             messages: [{ role: "system", content: system + NO_SEARCH_NOTE }, ...messages.map(m => ({ role: m.role, content: m.content }))]
           })
         });
