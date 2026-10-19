@@ -80,7 +80,7 @@ async function openAiChain(system, messages, signal) {
           })
         });
         if (r.ok && r.body) return { r, prov: prov.name, model };
-        console.error(prov.name, model, r.status, (await r.text().catch(() => "")).slice(0, 400));
+        console.error(prov.name, model, r.status, (await r.text().catch(() => "")).slice(0, 400)); note(prov.name, r.status);
       } catch (e) { if (signal.aborted) return null; console.error(prov.name, model, "კავშირის შეცდომა"); }
     }
   }
@@ -128,6 +128,10 @@ async function pipeOpenAi(res, alt, ctrl) {
   }
   res.end();
 }
+
+// ბოლო შეცდომები (მხოლოდ სტატუსის კოდი), რომ /health-ზე დიაგნოსტიკა გამოჩნდეს; გასაღებები და ტექსტი აქ არ ხვდება
+const recent = [];
+const note = (who, status) => { recent.push({ who, status, at: new Date().toISOString() }); if (recent.length > 8) recent.shift(); };
 
 const hits = new Map();
 function limited(ip) {
@@ -235,6 +239,7 @@ async function chat(req, res) {
           const r = await call(model, useSearch);
           if (r.ok) { opened = { up: r, model, usedSearch: useSearch }; break; }
           const text = await r.text().catch(() => "");
+          note("gemini", r.status);
           console.error("Gemini", model, useSearch ? "(ძებნით)" : "(ძებნის გარეშე)", r.status, text.slice(0, 1200));
           fail = {
             status: fail.status === 429 ? 429 : r.status, // 429 უფრო მნიშვნელოვანია, ვიდრე ბოლო მოდელის 404
@@ -360,7 +365,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === "POST" && url === "/api/chat") return chat(req, res);
 
-  if (req.method === "GET" && url === "/health") return json(res, 200, { ok: true });
+  if (req.method === "GET" && url === "/health") {
+    return json(res, 200, { ok: true, version: "fallback-2",
+      keys: { gemini: !!API_KEY, groq: !!GROQ_KEY, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
+  }
 
   if (req.method === "GET" && (url === "/" || url === "/Index.html" || url === "/index.html")) {
     fs.readFile(INDEX, (err, data) => {
