@@ -41,17 +41,92 @@ function systemPrompt(tz) {
   const now = new Date();
   const iso = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long" }).format(now);
-  return (
-    "შენ ხარ MOON AI — მეგობრული და გამოცდილი AI ასისტენტი. პასუხობ მკაფიოდ და გასაგებად. " +
-    "ყოველთვის უპასუხე იმ ენაზე, რომლითაც მომხმარებელი გწერს; თუ ენა გაურკვეველია, პასუხი ქართულად დაწერე.\n\n" +
-    "დღევანდელი თარიღია " + iso + " (" + weekday + "), დროის სარტყელი: " + zone + ". " +
-    "ეს არის სწორი, მიმდინარე თარიღი. შენი სწავლების მონაცემები უფრო ძველია, ამიტომ ახალ ამბებზე, ფასებზე, " +
-    "პროდუქტებისა და პროგრამების ვერსიებზე, სპორტზე, პოლიტიკაზე და ყველაფერზე, რაც შეიძლებოდა შეცვლილიყო, " +
-    "ჯერ გამოიყენე ძებნა და უპასუხე მიღებული ახალი ინფორმაციით. არასდროს თქვა, რომ ახლა 2024 წელია, და ძველი " +
-    "მონაცემები დღევანდელად არ გაასაღო. თუ ახალი ინფორმაცია ვერ დაადასტურე, პირდაპირ თქვი, რომ ის შეიძლება მოძველებული იყოს.\n\n" +
-    "ფორმატი: LaTeX-ს და დოლარის ნიშნებით მათემატიკურ ჩანაწერებს ($...$) არ იყენებ. ისრებისთვის წერე უბრალო სიმბოლოებს (→, ←, ⇒), " +
-    "ტექსტი კი დაწერე მარტივი Markdown-ით: მოკლე აბზაცები, საჭიროებისას სია, მუქი ტექსტი მნიშვნელოვანისთვის."
-  );
+  const year = iso.slice(0, 4);
+  return [
+    "შენ ხარ MOON AI (ვერსია MOON 1.0), მშვიდი და გასაგები ასისტენტი. თუ გკითხავენ, ვინ შეგქმნა ან რომელ მოდელს ეფუძნები, უპასუხე, რომ MOON AI ხარ და ტექნიკური დეტალები არ იცი. არასოდეს დაასახელო სხვა კომპანია ან მოდელი და არაფერი მოიგონო",
+    "დღევანდელი თარიღია " + iso + " (" + weekday + "), დროის სარტყელი: " + zone + ". ახლა " + year + " წელია. არასოდეს თქვა, რომ 2024 ან უფრო ადრეა. შენი სწავლების მონაცემები ძველია, ამიტომ ახალ ამბებზე, ფასებზე, ვერსიებზე და ყველაფერზე, რაც შეიძლებოდა შეცვლილიყო, გამოიყენე ძებნა. თუ ახალი ინფორმაცია ვერ დაადასტურე, პირდაპირ თქვი, რომ ის შეიძლება მოძველებული იყოს.",
+    "უპასუხე იმ ენაზე, რომლითაც მომხმარებელი წერს (ნაგულისხმევად ქართულად). იყავი ზუსტი, მკაფიო და არაზედმეტად ვრცელი. ქართული დაწერე გრამატიკულად სწორად და ბუნებრივად, სიტყვა-სიტყვით თარგმანის გარეშე.",
+    "სტილი: პასუხი დაწერე დასრულებულად და ლამაზად ჩამოყალიბებულად: ჯერ პირდაპირ და მოკლედ უპასუხე კითხვას, მერე საჭიროებისას დაამატე დეტალები. გრძელ პასუხებში გამოიყენე მოკლე სათაურები (## ...), სიები, **მუქი** მთავარი სიტყვები და შედარებისას ცხრილი. ზედმეტი შესავალი და გამეორება არ გამოიყენო.",
+    "ფაილები და კოდი: თუ მომხმარებელი გვერდს, აპლიკაციას, სკრიპტს ან ფაილს ითხოვს (ან კოდი 15 ხაზზე გრძელია), მთლიანი კოდი ჩასვი ერთ ბლოკში და ფაილის სახელი ღობეზე მიუთითე, მაგალითად ```html Index.html ან ```python main.py. ფაილი ნაწილებად არ დაყო. ბლოკის გარეთ ორ-სამ წინადადებაში ახსენი, რას აკეთებს. კოდი ტექსტში აღარ გაიმეორო. მოკლე ილუსტრაციის კოდს (15 ხაზამდე) ფაილის სახელი არ სჭირდება.",
+    "შენ შეგიძლია სურათების დახატვაც: ამისთვის მომხმარებელმა უნდა დააჭიროს ველის მარცხენა მხარეს სურათის ღილაკს ან დაწეროს „დამიხატე ...“. არასოდეს თქვა, რომ სურათის გენერირება შეუძლებელია.",
+    "ფორმატი: Markdown. არ გამოიყენო LaTeX და $ ფორმულები. ისრებისთვის გამოიყენე → სიმბოლო."
+  ].join("\n");
+}
+
+// ---------- სარეზერვო მომწოდებლები (Llama / Qwen და სხვ.) ----------
+// Gemini-ს ლიმიტი რომ ამოიწურება, სერვერი თავისით გადადის შემდეგზე. გასაღები საჭიროა მხოლოდ იმისთვის, რომელსაც ჩართავ.
+const GROQ_KEY = process.env.GROQ_API_KEY || "";
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
+const list = (v, d) => (v || d).split(",").map(x => x.trim()).filter(Boolean);
+const PROVIDERS = [
+  { name: "groq", url: process.env.GROQ_URL || "https://api.groq.com/openai/v1/chat/completions", key: GROQ_KEY,
+    models: list(process.env.GROQ_MODELS, "llama-3.3-70b-versatile,qwen/qwen3.8-27b,llama-3.1-8b-instant") },
+  { name: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: OPENROUTER_KEY,
+    models: list(process.env.OPENROUTER_MODELS, "nvidia/nemotron-3.5-super-vl:free,xingchen-agi/xing4.0-29b-a4b:free") }
+].filter(p => p.key);
+const HAS_ANY_KEY = () => !!API_KEY || PROVIDERS.length > 0;
+const NO_SEARCH_NOTE = "\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
+
+async function openAiChain(system, messages, signal) {
+  for (const prov of PROVIDERS) {
+    for (const model of prov.models) {
+      try {
+        const r = await fetch(prov.url, {
+          method: "POST", signal,
+          headers: { "content-type": "application/json", authorization: "Bearer " + prov.key },
+          body: JSON.stringify({
+            model, stream: true, max_tokens: 4096,
+            messages: [{ role: "system", content: system + NO_SEARCH_NOTE }, ...messages.map(m => ({ role: m.role, content: m.content }))]
+          })
+        });
+        if (r.ok && r.body) return { r, prov: prov.name, model };
+        console.error(prov.name, model, r.status, (await r.text().catch(() => "")).slice(0, 400));
+      } catch (e) { if (signal.aborted) return null; console.error(prov.name, model, "კავშირის შეცდომა"); }
+    }
+  }
+  return null;
+}
+
+// OpenAI-ფორმატის ნაკადს ვაქცევთ Index.html-ის ფორმატად; <think>...</think> ტექსტს ვმალავთ
+async function pipeOpenAi(res, alt, ctrl) {
+  res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });
+  let emitted = false, inThink = false, pend = "";
+  const out = t => { if (!t) return; emitted = true; res.write("data: " + JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: t } }) + "\n\n"); };
+  const feed = t => {
+    pend += t;
+    for (;;) {
+      if (inThink) {
+        const i = pend.indexOf("</think>");
+        if (i < 0) { pend = pend.slice(-8); return; }
+        pend = pend.slice(i + 8).replace(/^\s+/, ""); inThink = false;
+      } else {
+        const i = pend.indexOf("<think>");
+        if (i >= 0) { out(pend.slice(0, i)); pend = pend.slice(i + 7); inThink = true; continue; }
+        const keep = /<(t(h(i(n(k)?)?)?)?)?$/.exec(pend);
+        const cut = keep ? pend.length - keep[0].length : pend.length;
+        out(pend.slice(0, cut)); pend = pend.slice(cut); return;
+      }
+    }
+  };
+  try {
+    const dec = new TextDecoder(); let buf = "";
+    const handle = ln => {
+      if (!ln.startsWith("data:")) return;
+      const d = ln.slice(5).trim();
+      if (!d || d === "[DONE]") return;
+      try { const t = JSON.parse(d).choices?.[0]?.delta?.content; if (typeof t === "string") feed(t); } catch {}
+    };
+    for await (const chunk of alt.r.body) {
+      buf += dec.decode(chunk, { stream: true });
+      const lines = buf.split(/\r?\n/); buf = lines.pop(); lines.forEach(handle);
+    }
+    handle(buf);
+    if (!inThink && pend) out(pend);
+  } catch {}
+  if (!emitted && !ctrl.signal.aborted) {
+    res.write("data: " + JSON.stringify({ type: "error", message: "პასუხი ვერ მივიღე. სცადე თავიდან." }) + "\n\n");
+  }
+  res.end();
 }
 
 const hits = new Map();
@@ -115,7 +190,7 @@ async function chat(req, res) {
   cors(res, req);
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
   if (limited(ip)) return json(res, 429, { error: "ძალიან ბევრი მოთხოვნაა. ერთი წუთით მოიცადე." });
-  if (!API_KEY) return json(res, 500, { error: "სერვერზე GEMINI_API_KEY არ არის დაყენებული." });
+  if (!HAS_ANY_KEY()) return json(res, 500, { error: "სერვისი ახლა მიუწვდომელია." });
 
   let body;
   try { body = JSON.parse(await readBody(req)); }
@@ -127,7 +202,7 @@ async function chat(req, res) {
   const ctrl = new AbortController();
   res.on("close", () => ctrl.abort());
 
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+  const url = (process.env.GEMINI_BASE || "https://generativelanguage.googleapis.com") + "/v1beta/models/" +
     encodeURIComponent(MODEL) + ":streamGenerateContent?alt=sse";
   const system = systemPrompt(body.tz);
   const contents = messages.map(m => ({
@@ -135,7 +210,7 @@ async function chat(req, res) {
     parts: [{ text: m.content }]
   }));
   const call = (model, withSearch) => fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(model) + ":streamGenerateContent?alt=sse",
+    (process.env.GEMINI_BASE || "https://generativelanguage.googleapis.com") + "/v1beta/models/" + encodeURIComponent(model) + ":streamGenerateContent?alt=sse",
     {
       method: "POST",
       signal: ctrl.signal,
@@ -152,7 +227,7 @@ async function chat(req, res) {
   // მოდელებს რიგრიგობით ვცდით: ლიმიტი ამოიწურა (429), გადატვირთულია (5xx) ან ძებნა არ გავიდა (400) — შემდეგი ვარიანტი
   let opened = null, fail = { status: 0, daily: false, zero: false, retryMs: 0, detail: "" };
   try {
-    for (let round = 0; round < 2 && !opened; round++) {
+    for (let round = 0; round < 2 && !opened && API_KEY; round++) {
       let waitMs = 0;
       for (const model of MODELS) {
         let useSearch = SEARCH;
@@ -180,18 +255,17 @@ async function chat(req, res) {
     }
   } catch (e) {
     if (ctrl.signal.aborted) return;
-    return json(res, 502, { error: "AI სერვისთან კავშირი ვერ მოხერხდა." });
+    return json(res, 502, { error: "კავშირი ვერ მოხერხდა. სცადე თავიდან." });
   }
 
+  if (!opened && !ctrl.signal.aborted) {
+    const alt = await openAiChain(system, messages, ctrl.signal);
+    if (alt) { console.error("გამოყენებულია სარეზერვო:", alt.prov, alt.model); return pipeOpenAi(res, alt, ctrl); }
+  }
   if (!opened) {
-    let msg = "AI სერვისმა შეცდომა დააბრუნა (" + fail.status + "). სცადე რამდენიმე წუთში.";
-    if (fail.status === 429) {
-      if (fail.zero) msg = "ამ გასაღებზე უფასო ლიმიტი ჩართული არ არის (0). aistudio.google.com-ზე შეამოწმე გასაღების პროექტი ან ჩართე ბილინგი.";
-      else if (fail.daily) msg = "უფასო დღიური ლიმიტი ამოიწურა. სცადე მოგვიანებით, ლიმიტი ყოველდღიურად ახლდება.";
-      else if (fail.retryMs) msg = "უფასო ლიმიტი წუთში ამოიწურა. სცადე დაახლოებით " + Math.max(10, Math.ceil(fail.retryMs / 1000)) + " წამში.";
-      else msg = "უფასო ლიმიტი ამოიწურა. სცადე რამდენიმე წუთში. თუ განმეორდა, ამ გასაღებზე ლიმიტი გათავებულია: შეამოწმე aistudio.google.com-ზე.";
-    } else if (fail.status === 400 || fail.status === 403) msg = "გასაღები ან მოდელი არასწორია. შეამოწმე სერვერის პარამეტრები.";
-    else if (fail.status === 404) msg = "მოდელი ვერ მოიძებნა. შეამოწმე GEMINI_MODEL.";
+    // მომხმარებელს მომწოდებლის სახელს ან ტექნიკურ დეტალებს არ ვაჩვენებთ; ისინი მხოლოდ სერვერის ლოგშია
+    let msg = "ახლა პასუხის მიღება ვერ მოხერხდა. სცადე რამდენიმე წუთში.";
+    if (fail.status === 429) msg = fail.daily ? "დღევანდელი ლიმიტი ამოიწურა. სცადე მოგვიანებით." : "ახლა ძალიან დატვირთულია. სცადე რამდენიმე წამში.";
     if (DEBUG && fail.detail) msg += " [" + fail.detail + "]";
     return json(res, 502, { error: msg });
   }
@@ -304,5 +378,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log("AI ჩატი გაშვებულია: http://localhost:" + PORT);
-  if (!API_KEY) console.warn("გაფრთხილება: GEMINI_API_KEY არ არის დაყენებული.");
+  if (!HAS_ANY_KEY()) console.warn("გაფრთხილება: არც ერთი API გასაღები არ არის დაყენებული.");
 });

@@ -367,6 +367,7 @@
   const WEB_SEARCH = true;
   const MAX_TOKENS = 4096;
   const HISTORY_LIMIT = 30;
+  const API_URL = "/api/chat";   // სარეზერვო სერვერი (server.js); თუ ის არ არის, ჩატი მხოლოდ პირველ გზას იყენებს
 
   const SEND_ICON = '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
   const STOP_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="3"/></svg>';
@@ -1246,6 +1247,14 @@
     try { console.error("MOON AI error:", err); } catch (er) {}
     return "რაღაც არასწორად წავიდა. სცადე თავიდან.";
   }
+  // ლიმიტი / ანგარიშით შესვლის პრობლემა: ასეთ დროს სარეზერვო გზაზე გადავდივართ
+  const isLimitError = err => {
+    const e = err && err.error && typeof err.error === "object" ? err.error : err;
+    const code = String((e && (e.code || e.error)) || "").toLowerCase();
+    const status = (e && (e.status || e.statusCode)) || 0;
+    return code === "insufficient_funds" || code === "subscription_required" || code === "too_many_requests" ||
+      code === "auth_window_closed" || code === "popup_blocked" || status === 402 || status === 429;
+  };
   const isModelProblem = err => {
     const e = err && err.error && typeof err.error === "object" ? err.error : err;
     const code = String((e && (e.code || e.error)) || "").toLowerCase();
@@ -1423,6 +1432,36 @@
       }
     }
 
+    // სარეზერვო გზა: საკუთარი სერვერი (თუ Index.html სერვერთან ერთადაა გაშვებული)
+    async function runServer() {
+      let tz = ""; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+      const r = await fetch(API_URL, {
+        method: "POST", signal: ctrl.signal, headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tz, messages: messages.slice(-HISTORY_LIMIT).map(m => ({ role: m.role, content: m.content })) })
+      });
+      if (!r.ok || !r.body) { const e = new Error("server"); e.status = r.status; e.fromServer = true; throw e; }
+      const rd = r.body.getReader(), dec = new TextDecoder();
+      let buf = "";
+      const line = ln => {
+        if (!ln.startsWith("data:")) return;
+        let j; try { j = JSON.parse(ln.slice(5).trim()); } catch (e) { return; }
+        if (j.type === "content_block_delta" && j.delta && j.delta.text) {
+          if (!answer) finishThink();
+          answer += j.delta.text; reveal.push(j.delta.text);
+        } else if (j.type === "error") {
+          const e = new Error(String(j.message || "server")); e.fromServer = true; throw e;
+        }
+      };
+      while (true) {
+        const { value, done } = await rd.read();
+        if (done || userStopped) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split(/\r?\n/); buf = lines.pop();
+        lines.forEach(line);
+      }
+      line(buf);
+    }
+
     // სურათი: ჯერ ქართულ აღწერას ინგლისურ დეტალურ პრომპტად ვაქცევთ, მერე ვხატავთ
     async function generateImage() {
       let prev = "";
@@ -1472,11 +1511,14 @@
     }
 
     try {
-      if (typeof puter === "undefined" || !puter.ai) {
-        throw new Error("სერვისი ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
-      }
-      if (await outOfBalance()) throw Object.assign(new Error("limit"), { code: "insufficient_funds", status: 402 });
+      const havePuter = typeof puter !== "undefined" && puter.ai;
+      const noBalance = havePuter && await outOfBalance();
+      const limitErr = () => Object.assign(new Error("limit"), { code: "insufficient_funds", status: 402 });
+      let firstErr = noBalance ? limitErr() : null;
+      let viaServer = !havePuter || noBalance;
       if (imageMode) {
+        if (!havePuter) throw new Error("სერვისი ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
+        if (noBalance) throw limitErr();
         const out = await generateImage();
         if (!out) { bot.remove(); messages.pop(); return; }
         finishThink();
@@ -1490,14 +1532,20 @@
       }
       // ვცდით რიგით: თუ მოდელი ვერ მოიძებნა, შემდეგს; თუ ძებნა არ ჩაიარა, ძებნის გარეშე
       let search = WEB_SEARCH, mi = 0;
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 8 && !viaServer; i++) {
         try { await run(search, mi); break; }
         catch (e) {
           if (answer || userStopped || ctrl.signal.aborted) throw e;
+          if (isLimitError(e)) { firstErr = e; viaServer = true; step("ვცდი სხვა გზით"); break; }
           if (mi < TIERS[tierIdx].models.length && isModelProblem(e)) { mi++; step("ვცდი სხვა გზით"); continue; }
           if (search && isSearchProblem(e)) { search = false; step("ვაგრძელებ ძებნის გარეშე"); continue; }
           throw e;
         }
+      }
+      if (viaServer && !answer && !userStopped) {
+        if (!firstErr) step("ვცდი სხვა გზით");
+        try { await runServer(); }
+        catch (e2) { if (e2 && e2.fromServer && firstErr) throw firstErr; throw e2; }
       }
       if (!answer && !userStopped) throw new Error("პასუხი ვერ მივიღე, სცადე თავიდან.");
       await reveal.end();
