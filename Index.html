@@ -365,7 +365,7 @@
   ];
   // ინტერნეტში ძებნა (ახალი ამბები, ფასები). თუ მოდელი ვერ უჭერს მხარს, ჩატი თავისით ძებნის გარეშე გააგრძელებს
   const WEB_SEARCH = true;
-  const MAX_TOKENS = 4096;
+  const MAX_TOKENS = 2048;
   const HISTORY_LIMIT = 30;
   const API_URL = "/api/chat";   // სარეზერვო სერვერი (server.js); თუ ის არ არის, ჩატი მხოლოდ პირველ გზას იყენებს
 
@@ -1267,25 +1267,33 @@
   };
 
   // გამოძახებამდე ვამოწმებთ ლიმიტს, რომ სერვისის საკუთარი ფანჯარა არ გამოვიდეს
-  async function outOfBalance() {
+  // მოთხოვნა მაქსიმალურ ხარჯს წინასწარ "იჭერს", ამიტომ ნულამდე არ ვუცდით: მცირე მარაგიც საკმარისი არ არის
+  // (1 ცენტი = 1 000 000 მიკროცენტი). ტექსტს ~10 ცენტი სჭირდება, სურათს ~30.
+  async function outOfBalance(need) {
     try {
       if (!puter.auth || !puter.auth.getMonthlyUsage || !puter.auth.isSignedIn()) return false;
       const u = await puter.auth.getMonthlyUsage();
       const r = u && u.allowanceInfo && u.allowanceInfo.remaining;
-      return typeof r === "number" && isFinite(r) && r <= 0;
+      return typeof r === "number" && isFinite(r) && r < (need || 10000000);
     } catch (e) { return false; }
   }
 
   // სერვისის ჩაშენებული "Low Balance" ფანჯრის დამალვა (საუკეთესო მცდელობა)
+  const isUpsell = t => { t = (t || "").toLowerCase(); return (t.includes("low balance") || t.includes("upgrade now") || (t.includes("upgrade") && (t.includes("funding") || t.includes("balance")))); };
+  const hideUpsell = n => {
+    if (!n || n.nodeType !== 1 || n.closest("#drawer, #ctx, #toast, .composer")) return;
+    let host = n;
+    while (host.parentElement && host.parentElement !== document.body && host.parentElement !== document.documentElement) host = host.parentElement;
+    if (host === document.body || host === document.documentElement || host.id === "chat") return;
+    host.style.setProperty("display", "none", "important");
+  };
   new MutationObserver(list => {
     for (const m of list) for (const n of m.addedNodes) {
-      if (n.nodeType !== 1 || n.id === "app" || n.closest && n.closest("#app")) continue;
-      const t = (n.textContent || "").toLowerCase();
-      if (t.includes("upgrade") && (t.includes("balance") || t.includes("funding"))) {
-        n.style.setProperty("display", "none", "important");
-      }
+      if (n.nodeType !== 1 || (n.closest && n.closest("#chat, #drawer, #ctx, #toast, .composer, header"))) continue;
+      const own = (n.textContent || "") + " " + (n.shadowRoot ? n.shadowRoot.textContent || "" : "");
+      if (isUpsell(own)) hideUpsell(n);
     }
-  }).observe(document.body, { childList: true });
+  }).observe(document.documentElement, { childList: true, subtree: true });
 
   async function send() {
     if (busy) return;
@@ -1512,7 +1520,7 @@
 
     try {
       const havePuter = typeof puter !== "undefined" && puter.ai;
-      const noBalance = havePuter && await outOfBalance();
+      const noBalance = havePuter && await outOfBalance(imageMode ? 30000000 : 10000000);
       const limitErr = () => Object.assign(new Error("limit"), { code: "insufficient_funds", status: 402 });
       let firstErr = noBalance ? limitErr() : null;
       let viaServer = !havePuter || noBalance;
@@ -1547,6 +1555,7 @@
         try { await runServer(); }
         catch (e2) { if (e2 && e2.fromServer && firstErr) throw firstErr; throw e2; }
       }
+      if (viaServer && !answer && !userStopped && firstErr) throw firstErr;
       if (!answer && !userStopped) throw new Error("პასუხი ვერ მივიღე, სცადე თავიდან.");
       await reveal.end();
       const finalText = userStopped ? reveal.shown() : answer;
