@@ -7,7 +7,7 @@ const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || ""; // მაგ: https://moonfull4k.xyz (თუ Index.html სხვაგან ჰოსტდება)
 const MAX_TOKENS = 8192;          // მოდელის ფიქრიც ამ ლიმიტში ითვლება, ამიტომ დიდი მარაგი გვჭირდება
 const MAX_MESSAGES = 30;
@@ -17,7 +17,7 @@ const RATE_WINDOW_MS = 60_000;   // ... წუთში, ერთ IP-ზე
 
 // სარეზერვო მოდელები: თუ მთავარის უფასო ლიმიტი ამოიწურა, სერვერი თავისით გადადის მსუბუქ მოდელებზე
 const FALLBACKS = (process.env.GEMINI_FALLBACKS ||
-  "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-latest,gemini-flash-lite-latest,gemini-2.5-flash,gemini-2.5-flash-lite")
+  "gemini-3.6-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-latest,gemini-flash-lite-latest")
   .split(",").map(s => s.trim()).filter(Boolean);
 const MODELS = [MODEL, ...FALLBACKS.filter(m => m !== MODEL)];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -80,7 +80,7 @@ async function ollamaModels() {
 }
 const PROVIDERS = [
   { name: "groq", url: process.env.GROQ_URL || "https://api.groq.com/openai/v1/chat/completions", key: GROQ_KEY,
-    models: list(process.env.GROQ_MODELS, "llama-3.3-70b-versatile,openai/gpt-oss-120b,qwen/qwen3.8-27b,llama-3.1-8b-instant") },
+    models: list(process.env.GROQ_MODELS, "openai/gpt-oss-120b,llama-3.3-70b-versatile,qwen/qwen3.8-27b,llama-3.1-8b-instant") },
   { name: "ollama", url: OLLAMA_URL, key: OLLAMA_KEY || (OLLAMA_URL ? "local" : ""), getModels: ollamaModels },
   { name: "openrouter", url: "https://openrouter.ai/api/v1/chat/completions", key: OPENROUTER_KEY,
     models: list(process.env.OPENROUTER_MODELS, "nvidia/nemotron-3.5-super-vl:free,xingchen-agi/xing4.0-29b-a4b:free") }
