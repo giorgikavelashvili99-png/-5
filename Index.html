@@ -113,6 +113,25 @@
     background: var(--surface2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px;
     font-size: 13.5px; font-family: ui-monospace, Menlo, Consolas, monospace; color: var(--text);
   }
+  .file { margin: 14px 0; border: 1px solid var(--line); border-radius: 16px; background: #0e0e11; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr; gap: 12px 14px; align-items: center; }
+  .file-ic { width: 42px; height: 42px; border-radius: 12px; background: var(--surface2); border: 1px solid var(--line); display: grid; place-items: center; color: var(--text); }
+  .file-ic svg { width: 22px; height: 22px; }
+  .file-meta { min-width: 0; }
+  .file-meta b { display: block; font-size: 15px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-meta small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+  .file-act { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+  .file-act button { height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line2); font-size: 13.5px; color: var(--body); transition: background .18s, color .18s, transform .15s var(--ease); }
+  .file-act button:hover { background: var(--surface2); color: var(--text); }
+  .file-act button:active { transform: scale(.96); }
+  .file-act button.primary { background: var(--text); color: #0b0b0d; border-color: var(--text); font-weight: 600; }
+  .file-act button.primary:hover { background: #fff; }
+  .file pre { grid-column: 1 / -1; margin: 0; padding: 12px 14px; max-height: 360px; overflow: auto; border-top: 1px solid var(--line); direction: ltr; text-align: left; font-size: 13px; line-height: 1.6; }
+  .file pre[hidden] { display: none; }
+  .file pre code { font-family: ui-monospace, Menlo, Consolas, monospace; color: #e6e6ea; }
+  .file.busy .file-meta b span {
+    color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-image: linear-gradient(100deg, #6f6f7a 30%, #ececf0 50%, #6f6f7a 70%); background-size: 250% 100%; animation: shimmer 2.4s linear infinite;
+  }
   .bubble li.sub { list-style-type: circle; margin-left: 20px; counter-increment: list-item 0; }
   .bubble blockquote { margin: 14px 0; padding: 2px 0 2px 16px; border-left: 2px solid var(--line2); color: var(--muted); }
   .bubble blockquote p { margin: 0 0 6px; }
@@ -122,6 +141,24 @@
   .tbl th, .tbl td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl th { color: var(--text); font-weight: 600; background: var(--surface); white-space: nowrap; }
   .tbl tr:last-child td { border-bottom: 0; }
+  .think { margin: 0 0 14px; }
+  .think-h { display: flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 0; color: var(--muted); font-size: 15px; line-height: 1.5; text-align: left; transition: color .18s; }
+  .think-h:hover { color: var(--body); }
+  .think-h .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .think-h svg { width: 14px; height: 14px; flex: none; transition: transform .22s var(--ease); }
+  .think.open .think-h svg { transform: rotate(180deg); }
+  .think.live .think-h .txt {
+    color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-image: linear-gradient(100deg, #6f6f7a 30%, #ececf0 50%, #6f6f7a 70%); background-size: 250% 100%; animation: shimmer 2.4s linear infinite;
+  }
+  .think.live .think-h .txt.swap { animation: shimmer 2.4s linear infinite, sIn .5s var(--ease) both; }
+  .steps { display: none; list-style: none; margin: 10px 0 0 4px; padding: 0; }
+  .think.open .steps { display: block; }
+  .steps li { position: relative; padding: 0 0 14px 24px; color: var(--muted); font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; }
+  .steps li::before { content: ""; position: absolute; left: 0; top: .5em; width: 9px; height: 9px; border-radius: 50%; background: var(--line2); }
+  .steps li::after { content: ""; position: absolute; left: 4px; top: calc(.5em + 13px); bottom: 3px; width: 1px; background: var(--line); }
+  .steps li:last-child { padding-bottom: 2px; }
+  .steps li:last-child::after { display: none; }
   .status { padding: 6px 0; font-size: 15.5px; line-height: 1.6; }
   .status span {
     display: inline-block; color: transparent; -webkit-background-clip: text; background-clip: text;
@@ -345,14 +382,62 @@
   function tex(s) {
     return s.replace(/\$\s*\\([A-Za-z]+)\s*\$/g, (m, k) => TEX[k] || m).replace(/\\(rightarrow|leftarrow|Rightarrow|leftrightarrow)\b/g, (m, k) => TEX[k]);
   }
-  function md(src) {
+  const EXT = { html: "html", htm: "html", css: "css", javascript: "js", js: "js", jsx: "jsx", typescript: "ts", ts: "ts", tsx: "tsx", python: "py", py: "py", json: "json",
+    java: "java", kotlin: "kt", kt: "kt", swift: "swift", c: "c", cpp: "cpp", "c++": "cpp", csharp: "cs", "c#": "cs", go: "go", rust: "rs", php: "php", ruby: "rb",
+    sql: "sql", bash: "sh", sh: "sh", shell: "sh", powershell: "ps1", xml: "xml", yaml: "yml", yml: "yml", markdown: "md", md: "md", svg: "svg", dart: "dart", lua: "lua", bat: "bat", text: "txt" };
+  const DEFNAME = { html: "Index.html", css: "style.css", js: "script.js", py: "main.py", json: "data.json", sh: "script.sh", md: "README.md", svg: "image.svg", java: "Main.java", kt: "Main.kt" };
+  function parseInfo(info) {
+    info = String(info || "").trim();
+    let lang = "", name = "";
+    const first = (info.split(/\s+/)[0] || "");
+    if (/^[\w+#.-]+(:[^\s]+)?$/.test(first)) {
+      const bits = first.split(":");
+      lang = bits[0]; if (bits[1]) name = bits[1];
+    }
+    if (!name) { const mm = info.replace(first, " ").match(/([^\s"'=:\/\\<>|*?]+\.[A-Za-z0-9]{1,8})(?![\w.])/); if (mm) name = mm[1]; }
+    if (!name && /\.[A-Za-z0-9]{1,8}$/.test(lang) && /[A-Za-z]/.test(lang.split(".")[0] || "")) { name = lang; lang = ""; }
+    name = name.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "").slice(0, 80);
+    const l = lang.toLowerCase();
+    let ext = EXT[l] || (name.match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || "";
+    return { lang: l, name, ext: ext.toLowerCase() };
+  }
+  function fmtSize(n) { return n < 1024 ? n + " B" : (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB"; }
+  function md(src, live) {
     src = tex(src);
     const blocks = [];
-    let t = src.replace(/```([\w+#.-]*)[^\S\n]*\n?([\s\S]*?)(```|$)/g, (m, lang, code) => {
-      blocks.push({ lang, code: code.replace(/\n$/, "") });
+    let t = src.replace(/```([^\n`]*)\n?([\s\S]*?)(```|$)/g, (m, info, code, end) => {
+      blocks.push({ info, code: code.replace(/\n$/, ""), closed: end === "```" });
       return "\n\u0000" + (blocks.length - 1) + "\u0000\n";
     });
     t = esc(t);
+    const usedNames = {};
+    const FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13l-2 2 2 2M15 13l2 2-2 2"/></svg>';
+    const codeHtml = b => {
+      const pi = parseInfo(b.info);
+      const lines = b.code ? b.code.split("\n").length : 0;
+      const bigFile = !!pi.name || lines >= 15;
+      let name = pi.name || (DEFNAME[pi.ext] || ("code." + (pi.ext || "txt")));
+      if (!usedNames[name]) usedNames[name] = 0;
+      if (++usedNames[name] > 1) name = name.replace(/(\.[^.]*)?$/, "-" + usedNames[name] + "$1");
+      const label = (pi.ext || pi.lang || "code").toUpperCase();
+      if (live && !b.closed) {
+        // კოდი იწერება: ტექსტს არ ვაჩვენებთ, მხოლოდ პროგრესს
+        const what = (pi.name || lines >= 15) ? "ვქმნი ფაილს: " + (pi.name || name) : "ვწერ კოდს";
+        return '<div class="file busy"><div class="file-ic">' + FILE_ICON + '</div><div class="file-meta"><b><span>' + esc(what) + '</span></b><small>' + lines + " \u10EE\u10D0\u10D6\u10D8</small></div></div>";
+      }
+      if (!bigFile) {
+        return '<div class="code"><div class="code-h"><span>' + esc(pi.lang || "code") +
+          '</span><button data-copy-code>\u10D9\u10DD\u10DE\u10D8\u10E0\u10D4\u10D1\u10D0</button></div><pre><code>' + esc(b.code) + "</code></pre></div>";
+      }
+      const bytes = new TextEncoder().encode(b.code).length;
+      const canOpen = /^(html|svg)$/.test(pi.ext);
+      return '<div class="file" data-name="' + esc(name) + '" data-ext="' + esc(pi.ext) + '"><div class="file-ic">' + FILE_ICON + '</div>' +
+        '<div class="file-meta"><b>' + esc(name) + '</b><small>' + esc(label) + " \u00B7 " + lines + " \u10EE\u10D0\u10D6\u10D8 \u00B7 " + fmtSize(bytes) + '</small></div>' +
+        '<div class="file-act"><button class="primary" data-dl>\u10D2\u10D0\u10D3\u10DB\u10DD\u10EC\u10D4\u10E0\u10D0</button>' +
+        (canOpen ? '<button data-open>\u10D2\u10D0\u10EE\u10E1\u10DC\u10D0</button>' : "") +
+        '<button data-copy-file>\u10D9\u10DD\u10DE\u10D8\u10E0\u10D4\u10D1\u10D0</button><button data-toggle>\u10D9\u10DD\u10D3\u10D8</button></div>' +
+        '<pre hidden><code>' + esc(b.code) + "</code></pre></div>";
+    };
     const lines = t.split("\n");
     let out = "", list = null, quote = false;
     const close = () => {
@@ -367,9 +452,7 @@
       let m;
       if ((m = line.match(/^\u0000(\d+)\u0000$/))) {
         close();
-        const b = blocks[+m[1]];
-        out += '<div class="code"><div class="code-h"><span>' + esc(b.lang || "code") +
-          '</span><button data-copy-code>კოპირება</button></div><pre><code>' + esc(b.code) + "</code></pre></div>";
+        out += codeHtml(blocks[+m[1]]);
       } else if (line.includes("|") && i + 1 < lines.length && lines[i + 1].includes("|") && lines[i + 1].includes("-") && sepRe.test(lines[i + 1])) {
         close();
         const head = cells(line);
@@ -479,7 +562,37 @@
     try { document.execCommand("copy"); } catch (e) {}
     ta.remove();
   }
+  function fileOf(btn) {
+    const f = btn.closest(".file");
+    return { el: f, name: f.dataset.name || "file.txt", ext: f.dataset.ext || "", code: f.querySelector("code").textContent };
+  }
+  const MIME = { html: "text/html", css: "text/css", js: "text/javascript", json: "application/json", svg: "image/svg+xml", xml: "application/xml", md: "text/markdown" };
   wrap.addEventListener("click", e => {
+    const fb = e.target.closest("[data-dl], [data-open], [data-copy-file], [data-toggle]");
+    if (fb && fb.closest(".file")) {
+      const f = fileOf(fb);
+      if (fb.hasAttribute("data-dl")) {
+        const blob = new Blob([f.code], { type: (MIME[f.ext] || "text/plain") + ";charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 15000);
+        const old = fb.textContent; fb.textContent = "\u10D2\u10D0\u10D3\u10DB\u10DD\u10EC\u10D4\u10E0\u10D8\u10DA\u10D8\u10D0";
+        setTimeout(() => { fb.textContent = old; }, 1800);
+      } else if (fb.hasAttribute("data-open")) {
+        const blob = new Blob([f.code], { type: (MIME[f.ext] || "text/html") + ";charset=utf-8" });
+        window.open(URL.createObjectURL(blob), "_blank");
+      } else if (fb.hasAttribute("data-copy-file")) {
+        copyText(f.code);
+        const old = fb.textContent; fb.textContent = "\u10D3\u10D0\u10D9\u10DD\u10DE\u10D8\u10E0\u10D3\u10D0";
+        setTimeout(() => { fb.textContent = old; }, 1500);
+      } else {
+        const pre = f.el.querySelector("pre");
+        pre.hidden = !pre.hidden;
+        fb.textContent = pre.hidden ? "\u10D9\u10DD\u10D3\u10D8" : "\u10D3\u10D0\u10DB\u10D0\u10DA\u10D4";
+      }
+      return;
+    }
     const btn = e.target.closest("[data-copy-code]");
     if (!btn) return;
     copyText(btn.closest(".code").querySelector("code").textContent);
@@ -629,12 +742,24 @@
     let resolveFinished;
     const finished = new Promise(r => { resolveFinished = r; });
 
+    // კოდის ბლოკი სიტყვა-სიტყვით არ იწერება: მთლიანად (ან რამდენიც მოვიდა) ერთბაშად გადადის
+    function fenceSpans() {
+      const spans = [], r = /```/g;
+      let open = -1, m;
+      while ((m = r.exec(full))) { if (open < 0) open = m.index; else { spans.push([open, m.index + 3]); open = -1; } }
+      if (open >= 0) spans.push([open, full.length]);
+      return spans;
+    }
     function advance(n) {
       const re = /\s*\S+/g;
       re.lastIndex = cut;
+      const spans = fenceSpans();
       while (n > 0) {
         const m = re.exec(full);
         if (!m) break;
+        const ts = m.index + (m[0].length - m[0].trimStart().length);
+        const sp = spans.find(x => x[0] <= ts && ts < x[1]);
+        if (sp) { cut = sp[1]; re.lastIndex = cut; n--; continue; }
         // ბოლო სიტყვა შეიძლება ჯერ არ მოსულიყო სრულად
         if (!done && re.lastIndex >= full.length && !/\s$/.test(full)) break;
         cut = re.lastIndex; n--;
@@ -644,12 +769,12 @@
 
     // ყოველ სიტყვას ცალკე span-ში ვხვევთ, რომ თითოეულმა საკუთარი ანიმაცია გაიაროს
     function wrapWords(root) {
-      if (root.classList && root.classList.contains("code")) { root.classList.add("blk"); return root; }
+      if (root.classList && (root.classList.contains("code") || root.classList.contains("file"))) { root.classList.add("blk"); return root; }
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       const nodes = [];
       let n;
       while ((n = walker.nextNode())) {
-        if (n.parentNode.closest && n.parentNode.closest(".code")) continue;
+        if (n.parentNode.closest && n.parentNode.closest(".code, .file")) continue;
         if (/\S/.test(n.nodeValue)) nodes.push(n);
       }
       for (const node of nodes) {
@@ -672,7 +797,12 @@
     }
 
     // ცოცხალ DOM-ს ახალთან ვადარებთ: უცვლელი კვანძები ხელუხლებელი რჩება (ანიმაცია გრძელდება), ახალი ემატება
+    function syncAttrs(a, b) {
+      for (const at of Array.from(a.attributes)) if (!b.hasAttribute(at.name)) a.removeAttribute(at.name);
+      for (const at of Array.from(b.attributes)) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
+    }
     function morph(live, next) {
+      if (live.nodeType === 1 && next.nodeType === 1) syncAttrs(live, next);
       const ln = live.childNodes, nn = next.childNodes;
       for (let i = 0; i < nn.length; i++) {
         const a = ln[i], b = nn[i];
@@ -701,7 +831,7 @@
 
     function paint() {
       const tmp = document.createElement("div");
-      tmp.innerHTML = md(full.slice(0, cut));
+      tmp.innerHTML = md(full.slice(0, cut), true);
       const next = Array.from(tmp.children);
       if (!started) { started = true; el.innerHTML = ""; el.classList.add("streaming"); }
       const lastIdx = next.length - 1;
@@ -875,6 +1005,8 @@
       "თუ კითხვა ახალ ამბებს, ფასებს, მოვლენებს ან რაიმე ცვალებად ფაქტს ეხება და ძებნა გაქვს, გამოიყენე ძებნა.",
       "უპასუხე იმ ენაზე, რომლითაც მომხმარებელი წერს (ნაგულისხმევად ქართულად). იყავი ზუსტი, მკაფიო და არაზედმეტად ვრცელი.",
       "სტილი: პასუხი დაწერე დასრულებულად და ლამაზად ჩამოყალიბებულად, როგორც ყურადღებით დაწერილი ტექსტი: ჯერ პირდაპირ და მოკლედ უპასუხე კითხვას, მერე საჭიროებისას დაამატე დეტალები. გრძელ პასუხებში გამოიყენე მოკლე სათაურები (## ...), სიები, **მუქი** მთავარი სიტყვები და შედარებისას ცხრილი. ბოლოს, საჭიროებისას, დაამატე მოკლე რჩევა ან დასკვნა. ზედმეტი შესავალი და გამეორება არ გამოიყენო და პასუხი ნახევარი არ დატოვო.",
+      "ფაილები და კოდი: თუ მომხმარებელი გვერდს, აპლიკაციას, სკრიპტს ან ფაილს ითხოვს (ან კოდი 15 ხაზზე გრძელია), მთლიანი კოდი ჩასვი ერთ ბლოკში და ფაილის სახელი ღობეზე მიუთითე, მაგალითად ```html Index.html ან ```python main.py. ფაილი ნაწილებად არ დაყო. ბლოკის გარეთ ორ-სამ წინადადებაში ახსენი, რას აკეთებს და როგორ გაუშვას. კოდი ტექსტში აღარ გაიმეორო. მოკლე ილუსტრაციის კოდს (15 ხაზამდე) ფაილის სახელი არ სჭირდება.",
+      "თუ მსჯელობისას მოკლე შეჯამებებს წერ, ისინი ქართულად დაწერე.",
       "ფორმატი: Markdown (აბზაცები, სიები, **მუქი**, ცხრილები, კოდის ბლოკები). არ გამოიყენო LaTeX და $ ფორმულები. ისრებისთვის გამოიყენე → სიმბოლო."
     ].join("\n");
   }
@@ -918,24 +1050,87 @@
 
     const bot = addBot("");
     let answer = "", userStopped = false;
-    bot._bubble.innerHTML = '<div class="status"><span></span></div>';
-    const setStatus = t => {
-      if (answer) return;
-      const sp = bot._bubble.querySelector(".status span");
-      if (!sp || sp.textContent === t) return;
-      sp.classList.remove("swap"); void sp.offsetWidth;
-      sp.textContent = t; sp.classList.add("swap");
+    bot._bubble.innerHTML = '<div class="think live"><button class="think-h" type="button" aria-expanded="false"><span class="txt"></span>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button><ol class="steps"></ol></div><div class="ans"></div>';
+    const thinkEl = bot._bubble.querySelector(".think");
+    const thinkTxt = thinkEl.querySelector(".txt");
+    const stepsEl = thinkEl.querySelector(".steps");
+    const ansEl = bot._bubble.querySelector(".ans");
+    thinkEl.querySelector(".think-h").addEventListener("click", e => {
+      const open = !thinkEl.classList.contains("open");
+      thinkEl.classList.toggle("open", open);
+      e.currentTarget.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    // ფიქრის ნაბიჯები: ზედა ხაზზე მიმდინარე ნაბიჯი ჩანს, დაჭერისას ყველა ნაბიჯის სია იხსნება
+    const steps = [];
+    const setHead = t => {
+      if (thinkTxt.textContent === t) return;
+      thinkTxt.classList.remove("swap"); void thinkTxt.offsetWidth;
+      thinkTxt.textContent = t; thinkTxt.classList.add("swap");
     };
-    setStatus("კითხვას ვამუშავებ");
-    const timers = [
-      setTimeout(() => setStatus("ველოდები პასუხს. თუ Puter-ის შესვლის ფანჯარა გაიხსნა, დაასრულე შესვლა"), 6000),
-      setTimeout(() => setStatus("ცოტა მეტი დრო სჭირდება, ვაგრძელებ მუშაობას"), 22000)
-    ];
+    const step = t => {
+      t = String(t || "").replace(/\s+/g, " ").trim().slice(0, 120);
+      if (!t || answer) return;
+      if (steps[steps.length - 1] !== t) {
+        steps.push(t);
+        if (steps.length > 14) steps.shift();
+        stepsEl.innerHTML = "";
+        steps.forEach(x => { const li = document.createElement("li"); li.textContent = x; stepsEl.appendChild(li); });
+      }
+      setHead(t);
+    };
+    // მოდელის მსჯელობის ტექსტიდან ვიღებთ აბზაცებს: ყოველი დასრულებული აბზაცი ცალკე ნაბიჯია
+    let rbuf = "", rDone = 0;
+    // ნაბიჯის დასახელება: მუქი სათაური, ან პირველი სრული წინადადება (დაუსრულებელს არ ვაჩვენებთ, რომ ტექსტი არ ციმციმებდეს)
+    const labelOf = (p, final) => {
+      p = String(p).trim();
+      let t;
+      const h = p.match(/^\*\*(.+?)\*\*/);
+      if (h) t = h[1];
+      else {
+        const first = p.split(/\n/)[0];
+        const sm = first.match(/^(.+?[.!?])(\s|$)/);
+        t = sm ? sm[1] : (final ? first : "");
+      }
+      t = t.replace(/[*`#_]/g, "").replace(/\s+/g, " ").trim();
+      return t.length >= 6 ? t : "";
+    };
+    // სათაურს (**...**) მოყოლილი ახსნის აბზაცი ცალკე ნაბიჯად არ ითვლება
+    let afterHead = false;
+    const consume = par => {
+      const t = par.trim();
+      if (afterHead && !/^\*\*/.test(t)) { afterHead = false; return; }
+      afterHead = /^\*\*[^*]+\*\*$/.test(t);
+      const l = labelOf(par, true);
+      if (l) step(l);
+    };
+    const onReasoning = txt => {
+      if (typeof txt !== "string" || !txt) return;
+      rbuf += txt;
+      const paras = rbuf.split(/\n\s*\n/).filter(x => x.trim());
+      while (rDone < paras.length - 1) { consume(paras[rDone]); rDone++; }
+      const last = paras.length ? paras[paras.length - 1] : "";
+      const body = afterHead && !/^\*\*/.test(last.trim());
+      const cur = last && !body ? labelOf(last) : "";
+      if (cur && !answer) setHead(cur);
+    };
+    const flushReasoning = () => {
+      const paras = rbuf.split(/\n\s*\n/).filter(x => x.trim());
+      while (rDone < paras.length) { consume(paras[rDone]); rDone++; }
+    };
+    const finishThink = () => {
+      flushReasoning();
+      thinkEl.classList.remove("live");
+      if (steps.length > 1) thinkTxt.textContent = "ფიქრი · " + steps.length + " ნაბიჯი";
+      else thinkEl.remove();
+    };
+    step("კითხვას ვაანალიზებ");
     stick = true; toBottom(true);
 
     busy = true; syncSend();
     ctrl = new AbortController();
-    const reveal = createReveal(bot._bubble);
+    const reveal = createReveal(ansEl);
     stopFn = () => { userStopped = true; ctrl.abort(); reveal.stop(); };
 
     const keep = finalText => {
@@ -945,9 +1140,9 @@
     };
 
     // ერთი მცდელობა: ნაკადს ვკითხულობთ და სიტყვებს ანიმაციაში ვაწვდით
-    async function run(withSearch, step) {
+    async function run(withSearch, mi) {
       const opts = { stream: true, max_tokens: MAX_TOKENS, signal: ctrl.signal };
-      const mdl = TIERS[tierIdx].models[step];
+      const mdl = TIERS[tierIdx].models[mi];
       if (mdl) opts.model = mdl;
       if (withSearch) opts.tools = [{ type: "web_search" }];
       const history = [{ role: "system", content: systemPrompt() }]
@@ -958,10 +1153,11 @@
         if (userStopped) break;
         if (!part) continue;
         if (part.type === "text" && part.text) {
+          if (!answer) finishThink();
           answer += part.text;
           reveal.push(part.text);
-        } else if (part.type === "reasoning" || part.type === "reasoning_start") {
-          setStatus("ვფიქრობ");
+        } else if (part.type === "reasoning") {
+          onReasoning(part.reasoning);
         } else if (/tool|server|search/.test(String(part.type))) {
           // ხელსაწყოს გამოძახება (ძებნა): თუ შეკითხვაც მოჰყვა, ვაჩვენებთ
           let raw = ""; try { raw = JSON.stringify(part).toLowerCase(); } catch (e) {}
@@ -970,8 +1166,8 @@
             const cands = [part.input, part.block && part.block.input, part.block && part.block.action];
             for (const c of cands) if (c && typeof c.query === "string") { q = c.query; break; }
             q = q.replace(/\s+/g, " ").trim().slice(0, 70);
-            setStatus(q ? "ვეძებ ინტერნეტში: " + q : "ვეძებ ინტერნეტში");
-          } else setStatus("ინფორმაციას ვამუშავებ");
+            step(q ? "ვეძებ ინტერნეტში: " + q : "ვეძებ ინტერნეტში");
+          } else step("ინფორმაციას ვამუშავებ");
         } else if (part.type === "error") {
           const er = new Error(part.message || "error");
           er.code = part.code; er.status = part.status;
@@ -985,13 +1181,13 @@
         throw new Error("Puter ვერ ჩაიტვირთა. შეამოწმე ინტერნეტი და გვერდი თავიდან გახსენი.");
       }
       // ვცდით რიგით: თუ მოდელი ვერ მოიძებნა, შემდეგს; თუ ძებნა არ ჩაიარა, ძებნის გარეშე
-      let search = WEB_SEARCH, step = 0;
+      let search = WEB_SEARCH, mi = 0;
       for (let i = 0; i < 8; i++) {
-        try { await run(search, step); break; }
+        try { await run(search, mi); break; }
         catch (e) {
           if (answer || userStopped || ctrl.signal.aborted) throw e;
-          if (step < TIERS[tierIdx].models.length && isModelProblem(e)) { step++; setStatus("ვცდი სხვა გზით"); continue; }
-          if (search && isSearchProblem(e)) { search = false; setStatus("ვფიქრობ"); continue; }
+          if (mi < TIERS[tierIdx].models.length && isModelProblem(e)) { mi++; step("ვცდი სხვა გზით"); continue; }
+          if (search && isSearchProblem(e)) { search = false; step("ვაგრძელებ ძებნის გარეშე"); continue; }
           throw e;
         }
       }
@@ -1012,7 +1208,6 @@
         messages.pop();
       }
     } finally {
-      timers.forEach(clearTimeout);
       busy = false; ctrl = null; stopFn = null; syncSend(); toBottom();
       if (matchMedia("(hover: hover)").matches) inputEl.focus();
     }
