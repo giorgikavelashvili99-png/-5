@@ -78,7 +78,11 @@ async function ollamaModels() {
   } catch (e) { note("ollama-tags", 0); }
   return ollamaCache.models;
 }
+// OpenAI (ChatGPT-ის მოდელები): ფასიანი API გასაღები (platform.openai.com). ყველაზე იაფი მოდელი gpt-6-luna დაახლოებით $0.10 / $0.50 ჯდება 1 მლნ ტოკენზე
+const OPENAI_KEY = process.env.OPENAI_API_KEY || "";
 const PROVIDERS = [
+  { name: "openai", url: process.env.OPENAI_URL || "https://api.openai.com/v1/chat/completions", key: OPENAI_KEY,
+    models: list(process.env.OPENAI_MODELS, "gpt-6-luna") },
   { name: "groq", url: process.env.GROQ_URL || "https://api.groq.com/openai/v1/chat/completions", key: GROQ_KEY,
     models: list(process.env.GROQ_MODELS, "openai/gpt-oss-120b,llama-3.3-70b-versatile,qwen/qwen3.8-27b,llama-3.1-8b-instant") },
   { name: "ollama", url: OLLAMA_URL, key: OLLAMA_KEY || (OLLAMA_URL ? "local" : ""), getModels: ollamaModels },
@@ -86,26 +90,34 @@ const PROVIDERS = [
     models: list(process.env.OPENROUTER_MODELS, "nvidia/nemotron-3.5-super-vl:free,xingchen-agi/xing4.0-29b-a4b:free") }
 ].filter(p => p.key);
 // რიგი იცვლება ცვლადით, მაგ: FALLBACK_ORDER=ollama,groq,openrouter (პირველი ის, ვინც ქართულს უკეთ წერს)
-const ORDER = list(process.env.FALLBACK_ORDER, "groq,ollama,openrouter");
+const ORDER = list(process.env.FALLBACK_ORDER, "openai,groq,ollama,openrouter");
 PROVIDERS.sort((x, y) => { const i = ORDER.indexOf(x.name), j = ORDER.indexOf(y.name); return (i < 0 ? 99 : i) - (j < 0 ? 99 : j); });
 const HAS_ANY_KEY = () => !!API_KEY || PROVIDERS.length > 0;
-// ქართული გრამატიკის მოკლე სახელმძღვანელო სარეზერვო მოდელებისთვის (ისინი ქართულს ბუნებრივად ვერ წერენ)
-const GEO_GUIDE = "\nქართული გრამატიკის წესები, რომლებიც აუცილებლად დაიცავი:" +
-  "\n1) რიცხვითი სახელის შემდეგ მრავლობითი რიცხვი არ დაიწერება: „ხუთი წიგნი“ (არა „ხუთი წიგნები“)." +
-  "\n2) გარდამავალი ზმნის წყვეტილში ქვემდებარე მოთხრობით ბრუნვაშია: „კაცმა დაწერა წერილი“, ახლანდელში კი სახელობითში: „კაცი წერს წერილს“." +
-  "\n3) ბრუნვის დაბოლოებები: სახელობითი -ი, მოთხრობითი -მა, მიცემითი -ს, ნათესაობითი -ის, მოქმედებითი -ით, ვითარებითი -ად. თანდებულები ჩვეულებრივ ბრუნვას არ ცვლის და წერია გადაბმით: „სახლში“, „მაგიდაზე“, „თბილისიდან“, „მეგობართან“." +
-  "\n4) „ვიცი“ ნიშნავს „ვიცი რაიმე ან ვფლობ ენას“: „ვიცი ქართული“. პროგრამირების ენა არის „პროგრამირების ენა“ (არა „პროგრამული ენა“); „ენა“ ჩვეულებრივ ადამიანურ ენას ნიშნავს, თუ პროგრამირებაზე არ ეკითხებიან." +
-  "\n5) რუსულიდან ან ინგლისურიდან სიტყვა-სიტყვით ნათარგმნი ფრაზები ერიდე; დაწერე ისე, როგორც ქართველი დაწერდა: მარტივი, მოკლე წინადადებებით, ყველაზე გავრცელებული სიტყვებით." +
-  "\n6) თუ სიტყვის ქართულ ფორმაში დარწმუნებული არ ხარ, აარჩიე უფრო მარტივი სიტყვა ან გადააფორმულირე წინადადება." +
-  "\n7) ანდაზა, ციტატა, ლექსი, გამოთქმა, თარიღი, სახელი ან სხვა ფაქტი არასოდეს მოიგონო. თუ მას ზუსტად არ იხსენებ და ძებნის შედეგებშიც არ წერია, პირდაპირ თქვი: „ზუსტად არ მახსოვს“. გამოგონილი ან ნახევრად გამოგონილი ტექსტი ცუდია. „ქართული ხალხური ანდაზა“ ნიშნავს ხალხში რეალურად გავრცელებულ ანდაზას და არა ინგლისურიდან ნათარგმნს ან შენ მიერ შეთხზულს.";
-const NO_SEARCH_NOTE = "\nქართულად წერე მოკლე, მარტივ და გრამატიკულად სწორ წინადადებებში; იშვიათ ან გაურკვეველ სიტყვებს ერიდე და ისეთი სიტყვა არ მოიგონო, რომელშიც დარწმუნებული არ ხარ. სანამ პასუხს დაწერ, გაიაზრე კითხვა სრულად (მაგალითად, „რა ენები იცი“ ადამიანურ ენებს გულისხმობს, თუ პროგრამირებაზე არ ეკითხებიან), და დაწერილი წინადადებები ბრუნვებისა და ზმნის ფორმების მხრივ გადაამოწმე.\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
+// მოკლე ინსტრუქცია სარეზერვო (პატარა) მოდელებისთვის: გრძელი ინსტრუქცია მათ ბნელდებათ, ამიტომ მხოლოდ მთავარი
+function fallbackSystem(tz) {
+  let zone = "Asia/Tbilisi";
+  if (typeof tz === "string" && tz.length < 60) { try { new Intl.DateTimeFormat("en", { timeZone: tz }); zone = tz; } catch {} }
+  const now = new Date();
+  const iso = new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(now);
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: zone, weekday: "long" }).format(now);
+  return [
+    "შენ ხარ MOON AI, ქართულენოვანი ასისტენტი. სხვა კომპანიას ან მოდელს არ ახსენებ.",
+    "დღეს არის " + iso + " (" + weekday + "), ანუ " + iso.slice(0, 4) + " წელი.",
+    "უპასუხე მომხმარებლის კითხვას პირდაპირ და მოკლედ, იმ ენაზე, რომლითაც გწერს (ნაგულისხმევად ქართულად). თუ კითხვა მართლა გაუგებარია, დასვი ერთი მოკლე დამაზუსტებელი შეკითხვა.",
+    "ქართული დაწერე მარტივი, გრამატიკულად სწორი წინადადებებით, ყველაზე გავრცელებული სიტყვებით. რიცხვის შემდეგ მრავლობითს არ წერენ („ხუთი წიგნი“). გარდამავალი ზმნის წყვეტილში ქვემდებარე მოთხრობითშია („კაცმა დაწერა“).",
+    "ფაქტი, ანდაზა, ციტატა, თარიღი ან სახელი არასოდეს მოიგონო. თუ არ იცი, თქვი: „ზუსტად არ ვიცი“.",
+    "ფორმატი: Markdown. კოდი ჩასვი ერთ ბლოკში ფაილის სახელით, მაგალითად ```html Index.html."
+  ].join("\n");
+}
+const NO_SEARCH_NOTE = "\nინტერნეტი ამ რეჟიმში არ გაქვს. თუ ახალ ამბებს ან ცვალებად ფაქტს გეკითხებიან, პირდაპირ თქვი, რომ ვერ ამოწმებ.";
 
 // ძებნა სარეზერვო მოდელებისთვის (Ollama web_search, იგივე OLLAMA_API_KEY). ფაქტებს ამით ვამყარებთ და მოგონებას ვამცირებთ
 const SEARCH_URL = process.env.OLLAMA_SEARCH_URL || "https://ollama.com/api/web_search";
 async function searchContext(messages, signal) {
   if (!OLLAMA_KEY || process.env.FALLBACK_SEARCH === "0") return "";
   const last = [...messages].reverse().find(m => m.role === "user");
-  const q = last ? last.content.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+  let q = last ? last.content.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+  if (NEWS_RE.test(q)) q += " " + new Date().getFullYear() + " ახალი ამბები";
   if (q.length < 12 || /^(გამარჯობა|გაუმარჯოს|ჰაი|hi|hello|hey|სალამი)\b/i.test(q) && q.length < 25) return "";
   try {
     const ctrl = new AbortController();
@@ -125,12 +137,48 @@ async function searchContext(messages, signal) {
 }
 
 // კითხვები, სადაც პატარა მოდელები ყველაზე ხშირად გამოგონებას იწყებენ: ანდაზა, ციტატა, ლექსი, გამოთქმა...
+const NEWS_RE = /რა\s?ხდება|რას აკეთებს|ახალი ამბ|ამბები|უკანასკნელი ამბ|ბოლო ამბ|დღეს რა|რა ხდება|ამინდ|კურსი|ფასი|ვინ მოიგო|ახლა.*(?:ვინ|რა|რამდენ)|news|latest|today/i;
+const NEWS_CANNED = "ახალი ამბების ინტერნეტით შემოწმება ამ რეჟიმში ახლა ვერ ხერხდება და არ მინდა დაუზუსტებელი ინფორმაცია გითხრა. სცადე რამდენიმე წუთში ან ჰკითხე უფრო კონკრეტულად, მაგალითად: „რა მოხდა საფრანგეთში წელს არჩევნებთან დაკავშირებით“.";
 const QUOTE_RE = /ანდაზ|გამოცანა|ციტატ|აფორიზმ|ლექსი|ლექსს|გამონათქვამ|პოემ|ზღაპარი.*ტექსტ|proverb|quote|poem/i;
+// რეალური ქართული ანდაზები (წყარო: „ქართული და ფრანგული ანდაზები“, საქართველოს პარლამენტის ეროვნული ბიბლიოთეკის ციფრული კრებული).
+// ისინი სიტყვა-სიტყვით არის გადმოწერილი; სარეზერვო მოდელი ანდაზის კითხვაზე აქედან პასუხობს და არაფერს თხზავს.
+const PROVERBS = [
+  "თევზი თავიდან ყროლდება.",
+  "ვისაც თევზი უნდა, ფეხები სველი უნდა ჰქონდეს.",
+  "მოთმინება სამოთხის გასაღებიაო.",
+  "მარტო ლოცვით სამოთხეში არ შეისვლებაო.",
+  "დიდ აღმართს დიდი დაღმართიც მოსდევსო.",
+  "ყეფითა და ყივილით სოფელი ვერ შენდებაო.",
+  "ვისაც თორნე ცხელი აქვს, პურსაც ის გამოაცხობსო.",
+  "სახით მღვდელი, საქმით მგელი.",
+  "სიკეთე ქენ – ქვაზე დადე, გამოივლი, წინ დაგხვდება.",
+  "ყვავსაც თავისი ბახალა მოსწონსო.",
+  "ბაყაყი ხალიჩაზე დააბრძანეს, ისკუპა და ისევ გუბეში ჩახტაო.",
+  "თაგვს ბუმბულში აწვენდნენ და თაგვი სოროში გარბოდაო.",
+  "ვინც რა უნდა თქვასო, წისქვილმა კი ფქვასო.",
+  "ფარა რომ მობრუნდება, კოჭლი ცხვარი წინ მოექცევაო.",
+  "ძაღლი ახსენე, ჯოხი ხელში დაიკავეო.",
+  "ხერხი სჯობია ღონესა, თუ კაცი მოიგონებსა.",
+  "კაცი რასაც აქ სიკეთეს იქს, იქ, საიქიოს, დახვდება.",
+  "არა გყავდეს მოახლეო, თავი მოიმოახლეო.",
+  "სანთელ-საკმეველი თავის გზას არ დაკარგავსო.",
+  "თუ ღმერთი მწყალობს, ეშმაკი რას დამაკლებსო."
+];
+function proverbAnswer(q) {
+  const m = /(\d{1,2})/.exec(q);
+  const n = Math.max(1, Math.min(10, m ? parseInt(m[1], 10) : 3));
+  const pool = PROVERBS.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  return "ქართული ხალხური ანდაზები:\n\n" + pool.slice(0, n).map(x => "- „" + x.replace(/[.]$/, "") + "“").join("\n") +
+    "\n\nეს ანდაზები ქართული ანდაზების ბიბლიოთეკური კრებულიდან არის გადმოწერილი. მათი მნიშვნელობა, თუ გინდა, ცალკე ამიხსნა.";
+}
 const CANNED = "ამ კითხვაზე ახლა დადასტურებულ ქართულ ტექსტებს ვერ ვპოულობ და არ მინდა გამოგონილი გაჩვენო. სცადე რამდენიმე წუთში ან დაწერე უფრო კონკრეტულად, მაგალითად: „მეგობრობაზე ქართული ანდაზა“.";
 
 async function openAiChain(system, messages, signal) {
   let extra = await searchContext(messages, signal);
   const lastU = [...messages].reverse().find(m => m.role === "user");
+  if (lastU && NEWS_RE.test(lastU.content) && !extra) return { canned: NEWS_CANNED }; // ძებნის გარეშე ახალ ამბებზე არ ვპასუხობთ
+  if (lastU && /ანდაზ|proverb/i.test(lastU.content)) return { canned: proverbAnswer(lastU.content) }; // ნამდვილი ანდაზები ბაზიდან
   if (lastU && QUOTE_RE.test(lastU.content)) {
     if (!extra) return { canned: CANNED };            // ძებნის გარეშე ასეთ კითხვებზე მოდელს არ ვუშვებთ: გამოგონებას გამოიწვევდა
     extra += "\nმხოლოდ ის ტექსტები ამოწერე, რომლებიც ზუსტად ამ შედეგებშია, სიტყვა-სიტყვით. საკუთარი ტექსტი არ დაამატო და არაფერი გადააკეთო. თუ ზუსტად სამგვარი მოიძებნა, მხოლოდ მათ დაწერე.";
@@ -142,8 +190,8 @@ async function openAiChain(system, messages, signal) {
           method: "POST", signal,
           headers: { "content-type": "application/json", ...(prov.key !== "local" ? { authorization: "Bearer " + prov.key } : {}) },
           body: JSON.stringify({
-            model, stream: true, max_tokens: 4096, temperature: 0.3, // დაბალი ტემპერატურა = ნაკლები მოგონილი სიტყვა
-            messages: [{ role: "system", content: system + (extra ? "" : NO_SEARCH_NOTE) + GEO_GUIDE + extra }, ...messages.map(m => ({ role: m.role, content: m.content }))]
+            model, stream: true, ...(prov.name === "openai" ? { max_completion_tokens: 4096 } : { max_tokens: 4096, temperature: 0.3 }), // დაბალი ტემპერატურა = ნაკლები მოგონილი სიტყვა
+            messages: [{ role: "system", content: system + (extra ? "" : NO_SEARCH_NOTE) + extra }, ...messages.map(m => ({ role: m.role, content: m.content }))]
           })
         });
         if (r.ok && r.body) return { r, prov: prov.name, model };
@@ -332,7 +380,7 @@ async function chat(req, res) {
   }
 
   if (!opened && !ctrl.signal.aborted) {
-    const alt = await openAiChain(system, messages, ctrl.signal);
+    const alt = await openAiChain(fallbackSystem(body.tz), messages, ctrl.signal);
     if (alt && alt.canned) {
       res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });
       res.write("data: " + JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: alt.canned } }) + "\n\n");
@@ -440,8 +488,8 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url === "/api/chat") return chat(req, res);
 
   if (req.method === "GET" && url === "/health") {
-    return json(res, 200, { ok: true, version: "fallback-6-search-guard", search: !!OLLAMA_KEY, lastFallback: lastUsed,
-      keys: { gemini: !!API_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
+    return json(res, 200, { ok: true, version: "fallback-9-openai", search: !!OLLAMA_KEY, lastFallback: lastUsed,
+      keys: { gemini: !!API_KEY, openai: !!OPENAI_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
   }
 
   if (req.method === "GET" && (url === "/" || url === "/Index.html" || url === "/index.html")) {
