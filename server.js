@@ -96,10 +96,45 @@ const GEO_GUIDE = "\nქართული გრამატიკის წე
   "\n3) ბრუნვის დაბოლოებები: სახელობითი -ი, მოთხრობითი -მა, მიცემითი -ს, ნათესაობითი -ის, მოქმედებითი -ით, ვითარებითი -ად. თანდებულები ჩვეულებრივ ბრუნვას არ ცვლის და წერია გადაბმით: „სახლში“, „მაგიდაზე“, „თბილისიდან“, „მეგობართან“." +
   "\n4) „ვიცი“ ნიშნავს „ვიცი რაიმე ან ვფლობ ენას“: „ვიცი ქართული“. პროგრამირების ენა არის „პროგრამირების ენა“ (არა „პროგრამული ენა“); „ენა“ ჩვეულებრივ ადამიანურ ენას ნიშნავს, თუ პროგრამირებაზე არ ეკითხებიან." +
   "\n5) რუსულიდან ან ინგლისურიდან სიტყვა-სიტყვით ნათარგმნი ფრაზები ერიდე; დაწერე ისე, როგორც ქართველი დაწერდა: მარტივი, მოკლე წინადადებებით, ყველაზე გავრცელებული სიტყვებით." +
-  "\n6) თუ სიტყვის ქართულ ფორმაში დარწმუნებული არ ხარ, აარჩიე უფრო მარტივი სიტყვა ან გადააფორმულირე წინადადება.";
+  "\n6) თუ სიტყვის ქართულ ფორმაში დარწმუნებული არ ხარ, აარჩიე უფრო მარტივი სიტყვა ან გადააფორმულირე წინადადება." +
+  "\n7) ანდაზა, ციტატა, ლექსი, გამოთქმა, თარიღი, სახელი ან სხვა ფაქტი არასოდეს მოიგონო. თუ მას ზუსტად არ იხსენებ და ძებნის შედეგებშიც არ წერია, პირდაპირ თქვი: „ზუსტად არ მახსოვს“. გამოგონილი ან ნახევრად გამოგონილი ტექსტი ცუდია. „ქართული ხალხური ანდაზა“ ნიშნავს ხალხში რეალურად გავრცელებულ ანდაზას და არა ინგლისურიდან ნათარგმნს ან შენ მიერ შეთხზულს.";
 const NO_SEARCH_NOTE = "\nქართულად წერე მოკლე, მარტივ და გრამატიკულად სწორ წინადადებებში; იშვიათ ან გაურკვეველ სიტყვებს ერიდე და ისეთი სიტყვა არ მოიგონო, რომელშიც დარწმუნებული არ ხარ. სანამ პასუხს დაწერ, გაიაზრე კითხვა სრულად (მაგალითად, „რა ენები იცი“ ადამიანურ ენებს გულისხმობს, თუ პროგრამირებაზე არ ეკითხებიან), და დაწერილი წინადადებები ბრუნვებისა და ზმნის ფორმების მხრივ გადაამოწმე.\nამ რეჟიმში ინტერნეტ-ძებნა არ გაქვს. თუ ახალ ფაქტს გეკითხებიან, უპასუხე იმით, რაც იცი, და პირდაპირ თქვი, რომ ინფორმაცია შეიძლება მოძველებული იყოს.";
 
+// ძებნა სარეზერვო მოდელებისთვის (Ollama web_search, იგივე OLLAMA_API_KEY). ფაქტებს ამით ვამყარებთ და მოგონებას ვამცირებთ
+const SEARCH_URL = process.env.OLLAMA_SEARCH_URL || "https://ollama.com/api/web_search";
+async function searchContext(messages, signal) {
+  if (!OLLAMA_KEY || process.env.FALLBACK_SEARCH === "0") return "";
+  const last = [...messages].reverse().find(m => m.role === "user");
+  const q = last ? last.content.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+  if (q.length < 12 || /^(გამარჯობა|გაუმარჯოს|ჰაი|hi|hello|hey|სალამი)\b/i.test(q) && q.length < 25) return "";
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 7000);
+    signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+    const r = await fetch(SEARCH_URL, {
+      method: "POST", signal: ctrl.signal,
+      headers: { "content-type": "application/json", authorization: "Bearer " + OLLAMA_KEY },
+      body: JSON.stringify({ query: q, max_results: 5 })
+    });
+    clearTimeout(t);
+    if (!r.ok) { note("search", r.status); return ""; }
+    const j = await r.json();
+    const items = (j.results || []).slice(0, 5).map((x, i) => (i + 1) + ") " + String(x.title || "").slice(0, 120) + " — " + String(x.content || "").replace(/\s+/g, " ").slice(0, 500) + " (" + String(x.url || "").slice(0, 120) + ")");
+    return items.length ? "\n\nინტერნეტ-ძებნის შედეგები (ფაქტებისთვის გამოიყენე ისინი; თუ პასუხი მათში არ წერია, ეს პირდაპირ თქვი და ნუ მოიგონებ):\n" + items.join("\n") : "";
+  } catch (e) { note("search", 0); return ""; }
+}
+
+// კითხვები, სადაც პატარა მოდელები ყველაზე ხშირად გამოგონებას იწყებენ: ანდაზა, ციტატა, ლექსი, გამოთქმა...
+const QUOTE_RE = /ანდაზ|გამოცანა|ციტატ|აფორიზმ|ლექსი|ლექსს|გამონათქვამ|პოემ|ზღაპარი.*ტექსტ|proverb|quote|poem/i;
+const CANNED = "ამ კითხვაზე ახლა დადასტურებულ ქართულ ტექსტებს ვერ ვპოულობ და არ მინდა გამოგონილი გაჩვენო. სცადე რამდენიმე წუთში ან დაწერე უფრო კონკრეტულად, მაგალითად: „მეგობრობაზე ქართული ანდაზა“.";
+
 async function openAiChain(system, messages, signal) {
+  let extra = await searchContext(messages, signal);
+  const lastU = [...messages].reverse().find(m => m.role === "user");
+  if (lastU && QUOTE_RE.test(lastU.content)) {
+    if (!extra) return { canned: CANNED };            // ძებნის გარეშე ასეთ კითხვებზე მოდელს არ ვუშვებთ: გამოგონებას გამოიწვევდა
+    extra += "\nმხოლოდ ის ტექსტები ამოწერე, რომლებიც ზუსტად ამ შედეგებშია, სიტყვა-სიტყვით. საკუთარი ტექსტი არ დაამატო და არაფერი გადააკეთო. თუ ზუსტად სამგვარი მოიძებნა, მხოლოდ მათ დაწერე.";
+  }
   for (const prov of PROVIDERS) {
     for (const model of (prov.getModels ? await prov.getModels() : prov.models)) {
       try {
@@ -108,7 +143,7 @@ async function openAiChain(system, messages, signal) {
           headers: { "content-type": "application/json", ...(prov.key !== "local" ? { authorization: "Bearer " + prov.key } : {}) },
           body: JSON.stringify({
             model, stream: true, max_tokens: 4096, temperature: 0.3, // დაბალი ტემპერატურა = ნაკლები მოგონილი სიტყვა
-            messages: [{ role: "system", content: system + NO_SEARCH_NOTE + GEO_GUIDE }, ...messages.map(m => ({ role: m.role, content: m.content }))]
+            messages: [{ role: "system", content: system + (extra ? "" : NO_SEARCH_NOTE) + GEO_GUIDE + extra }, ...messages.map(m => ({ role: m.role, content: m.content }))]
           })
         });
         if (r.ok && r.body) return { r, prov: prov.name, model };
@@ -298,6 +333,12 @@ async function chat(req, res) {
 
   if (!opened && !ctrl.signal.aborted) {
     const alt = await openAiChain(system, messages, ctrl.signal);
+    if (alt && alt.canned) {
+      res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });
+      res.write("data: " + JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: alt.canned } }) + "\n\n");
+      lastUsed = "canned";
+      return res.end();
+    }
     if (alt) { console.error("გამოყენებულია სარეზერვო:", alt.prov, alt.model); lastUsed = alt.prov + ":" + alt.model; return pipeOpenAi(res, alt, ctrl); }
   }
   if (!opened) {
@@ -399,7 +440,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && url === "/api/chat") return chat(req, res);
 
   if (req.method === "GET" && url === "/health") {
-    return json(res, 200, { ok: true, version: "fallback-3", lastFallback: lastUsed,
+    return json(res, 200, { ok: true, version: "fallback-6-search-guard", search: !!OLLAMA_KEY, lastFallback: lastUsed,
       keys: { gemini: !!API_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
   }
 
