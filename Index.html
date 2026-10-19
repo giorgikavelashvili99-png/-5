@@ -246,6 +246,31 @@
   .imgcard figcaption { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .imgcard .cap { flex: 1 1 100%; min-width: 0; color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .imgcard .file-act { grid-column: auto; }
+  .composer { flex-wrap: wrap; }
+  .composer textarea { flex: 1 1 0; min-width: 0; }
+  .attach { display: none; flex: 1 1 100%; gap: 8px; padding: 4px 4px 6px; overflow-x: auto; }
+  .attach.has { display: flex; }
+  .att { position: relative; flex: none; width: 66px; height: 66px; }
+  .att img { width: 100%; height: 100%; object-fit: cover; border-radius: 14px; border: 1px solid var(--line2); display: block; }
+  .att button { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; background: var(--text); color: #0b0b0d; display: grid; place-items: center; }
+  .att button svg { width: 12px; height: 12px; }
+  .uimgs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .uimgs img { height: 110px; max-width: 100%; border-radius: 12px; object-fit: cover; display: block; }
+  .ctx { position: fixed; z-index: 40; min-width: 210px; background: #26262b; border: 1px solid var(--line2); border-radius: 18px; padding: 6px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.6); opacity: 0; transform: scale(.96); transform-origin: top left; pointer-events: none; visibility: hidden;
+    transition: opacity .15s, transform .18s var(--ease), visibility 0s .18s; }
+  .ctx.open { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition: opacity .15s, transform .18s var(--ease), visibility 0s; }
+  .ctx button { display: flex; align-items: center; gap: 14px; width: 100%; padding: 13px 14px; border-radius: 12px; font-size: 16px; color: var(--text); text-align: left; }
+  .ctx button:hover, .ctx button:active { background: #303036; }
+  .ctx svg { width: 20px; height: 20px; color: var(--muted); flex: none; }
+  .toast { position: fixed; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom)); z-index: 50; transform: translate3d(-50%, 8px, 0); background: var(--text); color: #0b0b0d;
+    padding: 9px 18px; border-radius: 999px; font-size: 14px; font-weight: 500; opacity: 0; pointer-events: none; transition: opacity .2s, transform .25s var(--ease); }
+  .toast.show { opacity: 1; transform: translate3d(-50%, 0, 0); }
+  @media (hover: none) {
+    .msg .bubble { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .msg .bubble.sel { -webkit-user-select: text; user-select: text; }
+    .msg .code pre, .msg .file pre { -webkit-user-select: text; user-select: text; }
+  }
   .imgmiss { color: var(--muted); font-size: 14px; }
   .imgwait { aspect-ratio: 1 / 1; max-width: 520px; border-radius: 16px; border: 1px solid var(--line);
     background: linear-gradient(100deg, var(--surface) 30%, var(--surface2) 50%, var(--surface) 70%); background-size: 250% 100%; animation: shimmer 2.4s linear infinite; }
@@ -322,12 +347,18 @@
 
 <footer>
   <div class="composer">
+    <div class="attach" id="attach"></div>
+    <button class="tool" id="attBtn" type="button" aria-label="ფოტოს ატვირთვა" title="ფოტოს ატვირთვა"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    <input type="file" id="fileIn" accept="image/*" multiple hidden>
     <button class="tool" id="imgBtn" type="button" aria-pressed="false" aria-label="სურათის დახატვა" title="სურათის დახატვა"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.5 3.5 3.5 3-3 5 5"/></svg></button>
     <textarea id="input" rows="1" placeholder="დაწერე შეკითხვა..." aria-label="შეკითხვა"></textarea>
     <button id="send" aria-label="გაგზავნა" disabled></button>
   </div>
   <div class="hint"><span class="warn">MOON AI შეიძლება შეცდეს. მნიშვნელოვანი ინფორმაცია გადაამოწმე.</span><span class="pw">Powered by <a href="https://developer.puter.com" target="_blank" rel="noopener noreferrer">Puter</a></span></div>
 </footer>
+
+<div class="ctx" id="ctx" role="menu"></div>
+<div class="toast" id="toast" role="status"></div>
 
 <div class="scrim" id="scrim"></div>
 <aside class="drawer" id="drawer" aria-hidden="true" aria-label="ბოლო საუბრები">
@@ -372,6 +403,7 @@
   const jumpEl = document.getElementById("jump");
 
   let messages = [];
+  let attached = [];   // ატვირთული ფოტოები: { full, thumb }
   let busy = false;
   let ctrl = null;
   let stick = true;
@@ -534,15 +566,23 @@
 
   function syncSend() {
     sendBtn.innerHTML = busy ? STOP_ICON : SEND_ICON;
-    sendBtn.disabled = !busy && !inputEl.value.trim();
+    sendBtn.disabled = !busy && !inputEl.value.trim() && !attached.length;
     sendBtn.setAttribute("aria-label", busy ? "გაჩერება" : "გაგზავნა");
   }
 
-  function addUser(text, instant) {
+  function addUser(text, instant, idx, imgs) {
     const el = document.createElement("div");
     el.className = "msg user" + (instant ? " instant" : "");
     const b = document.createElement("div");
-    b.className = "bubble"; b.textContent = text;
+    b.className = "bubble";
+    if (imgs && imgs.length) {
+      const box = document.createElement("div"); box.className = "uimgs";
+      imgs.forEach(src => { const im = document.createElement("img"); im.src = src; im.alt = ""; box.appendChild(im); });
+      b.appendChild(box);
+      const t = document.createElement("span"); t.textContent = text; b.appendChild(t);
+      el._hasImgs = true;
+    } else b.textContent = text;
+    el._text = text; el._idx = idx;
     el.appendChild(b); wrap.appendChild(el);
     return el;
   }
@@ -552,7 +592,7 @@
     el.innerHTML = '<div class="bubble"></div><div class="actions"></div>';
     el._bubble = el.querySelector(".bubble");
     el._actions = el.querySelector(".actions");
-    if (text) el._bubble.innerHTML = md(text);
+    if (text) { el._bubble.innerHTML = md(text); el._text = text; }
     wrap.appendChild(el);
     if (text) addActions(el, text);
     return el;
@@ -648,7 +688,13 @@
     if (!currentId) currentId = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     let c = chats.find(x => x.id === currentId);
     if (!c) { c = { id: currentId, title: titleOf(messages[0].content), messages: [], updated: 0 }; chats.unshift(c); }
-    c.messages = messages.slice(-MAX_SAVED_MSGS).map(m => (m.image || m.imgPrompt ? { role: m.role, content: m.content, image: m.image || "", imgPrompt: m.imgPrompt || "" } : { role: m.role, content: m.content }));
+    c.messages = messages.slice(-MAX_SAVED_MSGS).map(m => {
+      const o = { role: m.role, content: m.content };
+      if (m.image || m.imgPrompt) { o.image = m.image || ""; o.imgPrompt = m.imgPrompt || ""; }
+      if (m.imgs && m.imgs.length) o.imgs = m.imgs;
+      if (m.fromPhoto) o.fromPhoto = true;
+      return o;
+    });
     c.updated = Date.now();
     chats.sort((a, b) => b.updated - a.updated);
     chats = chats.slice(0, MAX_CHATS);
@@ -740,6 +786,8 @@
   // ---------- სურათის დახატვა ----------
   const IMG_MODELS = ["gpt-image-2.5-flare", "gpt-image-2"];      // თანმიმდევრობით ვცდით; ბოლოს Puter-ის ნაგულისხმევი
   const IMG_QUALITY = ["low", "medium", "high", "high"];          // MOON-ის ვერსიის მიხედვით
+  const IMG_EDIT_MODELS = ["gpt-image-2", "gemini-3.1-flash-image"];   // ფოტოდან მუშაობა
+  const IMG_SYS_EDIT = "You turn the user's request into ONE concise English instruction for an image model that receives the user's own photo(s). Keep the people, objects and composition of the photo(s) unless the user asks to change them. Describe only the desired change or style. Output ONLY the instruction, no quotes, at most 80 words.";
   const IMG_SYS = "You write ONE detailed, vivid English prompt for a text-to-image model. Keep the user's subject, style, mood, colors, composition and any format details. For realistic photos describe camera, lighting and lens. Do not add text overlays unless asked. If a previous image prompt is given and the user asks for a change, apply the change to it. Output ONLY the prompt, no quotes, no explanation, at most 120 words.";
   const IMG_RE = /(დამიხატე|დახატე|დაგვიხატე|მომიხატე|(დამიგენერირე|დააგენერირე|გამიგენერირე|შემიქმენი|გამიკეთე|მინდა|მჭირდება)[^.\n]{0,40}(სურათ|ფოტო|ილუსტრაც|პორტრეტ|ნახატ)|(სურათ|ფოტო|ნახატ|ილუსტრაც)\S*[^.\n]{0,30}(დამიგენერირე|გამიკეთე|შემიქმენი|დამიხატე|დააგენერირე)|\b(draw|generate|create|make)\s+(me\s+)?(an?\s+)?(image|picture|photo|illustration)\b)/i;
   const imgBtn = document.getElementById("imgBtn");
@@ -785,7 +833,7 @@
   }
   function addImageMsg(m, instant) {
     const el = addBot("", instant);
-    if (m.image) el._bubble.appendChild(imageCard(m.image, m.imgPrompt, true));
+    if (m.image) el._bubble.appendChild(imageCard(m.image, m.imgPrompt, !m.fromPhoto));
     else { const d = document.createElement("p"); d.className = "imgmiss"; d.textContent = "სურათი: " + m.imgPrompt + " (ის აღარ ინახება)"; el._bubble.appendChild(d); }
     return el;
   }
@@ -799,14 +847,154 @@
       a.download = "moon-ai-" + Date.now() + (/^data:image\/jpeg/.test(a.href) ? ".jpg" : ".png");
       document.body.appendChild(a); a.click(); a.remove();
     } else if (!busy) {
-      inputEl.value = fig._prompt; setImgMode(true); send();
+      inputEl.value = fig._prompt;
+      if (fig._photos) { attached = fig._photos.slice(); renderAttach(); }
+      setImgMode(true); send();
     }
+  });
+
+  // ---------- ფოტოს ატვირთვა ----------
+  const attBtn = document.getElementById("attBtn");
+  const fileIn = document.getElementById("fileIn");
+  const attachEl = document.getElementById("attach");
+  const XICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const MAX_PHOTOS = 3;
+  function renderAttach() {
+    attachEl.innerHTML = "";
+    attachEl.classList.toggle("has", attached.length > 0);
+    attached.forEach((p, i) => {
+      const d = document.createElement("div"); d.className = "att";
+      const im = document.createElement("img"); im.src = p.thumb; im.alt = "";
+      const x = document.createElement("button"); x.type = "button"; x.setAttribute("aria-label", "წაშლა"); x.innerHTML = XICON;
+      x.addEventListener("click", () => { attached.splice(i, 1); renderAttach(); syncSend(); });
+      d.appendChild(im); d.appendChild(x); attachEl.appendChild(d);
+    });
+    syncSend();
+  }
+  function scaled(img, max, q) {
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight, 1));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", q);
+  }
+  async function addFiles(list) {
+    for (const f of Array.from(list || [])) {
+      if (attached.length >= MAX_PHOTOS) { toast("მაქსიმუმ " + MAX_PHOTOS + " ფოტო"); break; }
+      if (!/^image\//.test(f.type) || f.size > 25 * 1024 * 1024) { toast("ეს ფაილი ვერ ჩაიტვირთა"); continue; }
+      try {
+        const url = URL.createObjectURL(f);
+        const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+        attached.push({ full: scaled(img, 1536, 0.9), thumb: scaled(img, 320, 0.75) });
+        URL.revokeObjectURL(url);
+      } catch (e) { toast("ფოტოს წაკითხვა ვერ მოხერხდა"); }
+    }
+    if (attached.length) setImgMode(true);
+    renderAttach();
+  }
+  attBtn.addEventListener("click", () => fileIn.click());
+  fileIn.addEventListener("change", () => { addFiles(fileIn.files); fileIn.value = ""; });
+  inputEl.addEventListener("paste", e => {
+    const fs = Array.from((e.clipboardData && e.clipboardData.files) || []).filter(f => /^image\//.test(f.type));
+    if (fs.length) { e.preventDefault(); addFiles(fs); }
+  });
+
+  // ---------- შეტყობინების მენიუ (ხანგრძლივი დაჭერა): კოპირება, მონიშვნა, რედაქტირება ----------
+  const ctxEl = document.getElementById("ctx");
+  const toastEl = document.getElementById("toast");
+  let toastTimer = 0;
+  function toast(t) {
+    toastEl.textContent = t; toastEl.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("show"), 1600);
+  }
+  const CI = {
+    copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
+    sel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h16"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></svg>'
+  };
+  function closeCtx() { ctxEl.classList.remove("open"); }
+  function msgText(msgEl) {
+    if (msgEl._text != null) return msgEl._text;
+    const ans = msgEl.querySelector(".ans");
+    return (ans || msgEl.querySelector(".bubble")).innerText;
+  }
+  function showCtx(msgEl, x, y) {
+    const items = [
+      { icon: CI.copy, label: "კოპირება", fn: () => { copyText(msgText(msgEl)); toast("დაკოპირდა"); } },
+      { icon: CI.sel, label: "ტექსტის მონიშვნა", fn: () => {
+        const b = msgEl.querySelector(".bubble");
+        b.classList.add("sel");
+        const r = document.createRange(); r.selectNodeContents(b);
+        const sl = getSelection(); sl.removeAllRanges(); sl.addRange(r);
+      } }
+    ];
+    if (msgEl.classList.contains("user") && !msgEl._hasImgs && msgEl._idx != null) items.push({ icon: CI.edit, label: "რედაქტირება", fn: () => editMessage(msgEl._idx) });
+    ctxEl.innerHTML = "";
+    items.forEach(it => {
+      const b = document.createElement("button");
+      b.type = "button"; b.setAttribute("role", "menuitem");
+      b.innerHTML = it.icon + "<span></span>"; b.lastChild.textContent = it.label;
+      b.addEventListener("click", () => { closeCtx(); it.fn(); });
+      ctxEl.appendChild(b);
+    });
+    ctxEl.style.left = "0px"; ctxEl.style.top = "0px";
+    ctxEl.classList.add("open");
+    const w = ctxEl.offsetWidth, h = ctxEl.offsetHeight;
+    const left = Math.max(12, Math.min(x - 24, innerWidth - w - 12));
+    let top = y + 14;
+    if (top + h > innerHeight - 12) top = Math.max(12, y - h - 14);
+    ctxEl.style.left = left + "px"; ctxEl.style.top = top + "px";
+  }
+  function editMessage(idx) {
+    whenIdle(() => {
+      const m = messages[idx];
+      if (!m || m.role !== "user") return;
+      const t = m.content;
+      messages = messages.slice(0, idx);
+      if (!messages.length) {
+        chats = chats.filter(c => c.id !== currentId); currentId = null; persist(); renderRecents();
+      } else saveChat();
+      redraw();
+      inputEl.value = t;
+      inputEl.style.height = "auto"; inputEl.style.height = Math.min(inputEl.scrollHeight, 190) + "px";
+      syncSend(); inputEl.focus();
+      inputEl.setSelectionRange(t.length, t.length);
+    });
+  }
+  let lpTimer = 0, lpX = 0, lpY = 0, lpFired = false;
+  const NOCTX = "a, button, .code, .file, .imgcard, .think, .sources";
+  wrap.addEventListener("touchstart", e => {
+    clearTimeout(lpTimer);
+    const b = e.target.closest && e.target.closest(".msg .bubble");
+    if (!b || e.target.closest(NOCTX) || e.touches.length !== 1) return;
+    lpX = e.touches[0].clientX; lpY = e.touches[0].clientY; lpFired = false;
+    lpTimer = setTimeout(() => {
+      lpFired = true;
+      if (navigator.vibrate) { try { navigator.vibrate(8); } catch (er) {} }
+      showCtx(b.closest(".msg"), lpX, lpY);
+    }, 450);
+  }, { passive: true });
+  wrap.addEventListener("touchmove", e => {
+    const t = e.touches[0];
+    if (lpTimer && (Math.abs(t.clientX - lpX) > 10 || Math.abs(t.clientY - lpY) > 10)) clearTimeout(lpTimer);
+  }, { passive: true });
+  ["touchend", "touchcancel"].forEach(n => wrap.addEventListener(n, () => clearTimeout(lpTimer), { passive: true }));
+  wrap.addEventListener("contextmenu", e => {
+    if (matchMedia("(hover: none)").matches && e.target.closest && e.target.closest(".msg .bubble") && !e.target.closest(NOCTX)) e.preventDefault();
+  });
+  wrap.addEventListener("click", e => { if (lpFired) { lpFired = false; e.preventDefault(); e.stopPropagation(); } }, true);
+  document.addEventListener("pointerdown", e => { if (!ctxEl.contains(e.target)) closeCtx(); }, true);
+  chatEl.addEventListener("scroll", closeCtx, { passive: true });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeCtx(); });
+  document.addEventListener("selectionchange", () => {
+    const sl = getSelection();
+    if (!sl || sl.isCollapsed) document.querySelectorAll(".bubble.sel").forEach(b => b.classList.remove("sel"));
   });
 
   function redraw() {
     wrap.innerHTML = "";
     if (!messages.length) return;
-    messages.forEach(m => m.role === "user" ? addUser(m.content, true) : (m.imgPrompt ? addImageMsg(m, true) : addBot(m.content, true)));
+    messages.forEach((m, i) => m.role === "user" ? addUser(m.content, true, i, m.imgs) : (m.imgPrompt ? addImageMsg(m, true) : addBot(m.content, true)));
     toBottom(true);
   }
 
@@ -1099,7 +1287,10 @@
     const status = (e && (e.status || e.statusCode)) || 0;
     const raw = String((e && e.message) || (typeof err === "string" ? err : "") || "");
     const ec = String((e && e.errorCode) || "").toLowerCase();
-    if (ec === "moderation_flagged" || /moderation|safety|content.?policy/i.test(raw)) return "ეს აღწერა უსაფრთხოების ფილტრმა დაბლოკა. სცადე სხვაგვარად ჩამოაყალიბე.";
+    if (ec === "moderation_flagged" || /moderation|safety|content.?policy/i.test(raw)) {
+      return "სურათის სერვისმა ეს აღწერა დაბლოკა. ასეთი ფილტრი ხშირად რეაგირებს რეალური, ცნობილი ადამიანების სახელებზე (სპორტსმენები, პოლიტიკოსები, არტისტები): მათ გამოსახულებებს სერვისები არ ხატავენ. სცადე უსახელო ან გამოგონილი პერსონაჟები." +
+        (raw && raw.length > 8 ? " სერვისის პასუხი: " + raw.slice(0, 160) : "");
+    }
     if (code === "upstream_failed") return "სურათის დახატვა ვერ მოხერხდა. სცადე თავიდან.";
     if (code === "insufficient_funds" || status === 402) return "შენი Puter-ის უფასო ყოველთვიური ლიმიტი ამოიწურა. ახალი ლიმიტი მომდევნო თვეში განახლდება, ან შეგიძლია Puter-ზე კრედიტი შეიძინო." + (tierIdx > 0 ? " სცადე MOON 1.0, ის ნაკლებს ხარჯავს." : "");
     if (code === "subscription_required") return "ამ მოდელს Puter-ის ფასიანი გეგმა სჭირდება. სცადე სხვა მოდელი.";
@@ -1124,14 +1315,18 @@
 
   async function send() {
     if (busy) return;
-    const text = inputEl.value.trim();
-    if (!text) return;
+    const photos = attached.slice();
+    let text = inputEl.value.trim();
+    if (!text && !photos.length) return;
+    if (!text) text = "გააუმჯობესე ეს ფოტო";
 
-    const imageMode = imgOn || IMG_RE.test(text);
+    const imageMode = photos.length > 0 || imgOn || IMG_RE.test(text);
     setImgMode(false);
+    attached = []; renderAttach();
     if (!messages.length) wrap.innerHTML = "";
-    messages.push({ role: "user", content: text });
-    addUser(text);
+    const thumbs = photos.map(p => p.thumb);
+    messages.push(thumbs.length ? { role: "user", content: text, imgs: thumbs } : { role: "user", content: text });
+    addUser(text, false, messages.length - 1, thumbs);
     inputEl.value = ""; inputEl.style.height = "auto";
 
     const bot = addBot("");
@@ -1221,6 +1416,7 @@
 
     const keep = finalText => {
       messages.push({ role: "assistant", content: finalText });
+      bot._text = finalText;
       saveChat();
       addActions(bot, finalText);
     };
@@ -1266,10 +1462,12 @@
     async function generateImage() {
       let prev = "";
       for (let i = messages.length - 2; i >= 0; i--) if (messages[i].imgPrompt) { prev = messages[i].imgPrompt; break; }
-      step("ვამზადებ სურათის აღწერას");
+      const withPhotos = photos.length > 0;
+      step(withPhotos ? "ვამუშავებ ფოტოს" : "ვამზადებ სურათის აღწერას");
       let en = text;
-      const askMsgs = [{ role: "system", content: IMG_SYS },
-        { role: "user", content: (prev ? "Previous image prompt: " + prev + "\n\nUser request (may modify the previous image): " : "User request: ") + text }];
+      const askMsgs = [{ role: "system", content: withPhotos ? IMG_SYS_EDIT : IMG_SYS },
+        { role: "user", content: withPhotos ? "User request about the attached photo(s): " + text
+          : (prev ? "Previous image prompt: " + prev + "\n\nUser request (may modify the previous image): " : "User request: ") + text }];
       for (const mdl of [TIERS[0].models[0], null]) {
         try {
           const o = { stream: false, normalize: true, max_tokens: 350, signal: ctrl.signal };
@@ -1285,16 +1483,18 @@
       ansEl.innerHTML = '<div class="imgwait"></div>';
       toBottom();
       let ratio = pickRatio(text), img = null, mi = 0;
+      const models = withPhotos ? IMG_EDIT_MODELS : IMG_MODELS;
       for (let k = 0; k < 6 && !img; k++) {
         const o = { quality: IMG_QUALITY[tierIdx] };
-        if (IMG_MODELS[mi]) o.model = IMG_MODELS[mi];
+        if (models[mi]) o.model = models[mi];
+        if (withPhotos) { o.input_image = photos[0].full; o.input_images = photos.map(p => p.full); }
         if (ratio) o.ratio = ratio;
         try { img = await puter.ai.txt2img(en, o); }
         catch (e) {
           if (userStopped) return null;
           const msg = String((e && e.message) || "").toLowerCase();
           if (ratio && /ratio|size|dimension|bad_request/.test(msg + String(e && e.code))) { ratio = null; continue; }
-          if (mi < IMG_MODELS.length && isModelProblem(e)) { mi++; step("ვცდი სხვა გზით"); continue; }
+          if (mi < models.length && isModelProblem(e)) { mi++; step("ვცდი სხვა გზით"); continue; }
           throw e;
         }
       }
@@ -1315,8 +1515,10 @@
         if (!out) { bot.remove(); messages.pop(); return; }
         finishThink();
         ansEl.innerHTML = "";
-        ansEl.appendChild(imageCard(out.src, text, true));
-        messages.push({ role: "assistant", content: "[დახატული სურათი: " + text + "]", image: out.thumb, imgPrompt: text });
+        const card = imageCard(out.src, text, true);
+        if (photos.length) card._photos = photos;
+        ansEl.appendChild(card);
+        messages.push({ role: "assistant", content: "[დახატული სურათი: " + text + "]", image: out.thumb, imgPrompt: text, fromPhoto: photos.length > 0 });
         saveChat();
         return;
       }
