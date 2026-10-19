@@ -247,7 +247,7 @@ async function pipeOpenAi(res, alt, ctrl) {
 // ბოლო შეცდომები (მხოლოდ სტატუსის კოდი), რომ /health-ზე დიაგნოსტიკა გამოჩნდეს; გასაღებები და ტექსტი აქ არ ხვდება
 const recent = [];
 let lastUsed = "";
-const note = (who, status) => { recent.push({ who, status, at: new Date().toISOString() }); if (recent.length > 8) recent.shift(); };
+const note = (who, status, msg) => { recent.push({ who, status, ...(msg ? { msg } : {}), at: new Date().toISOString() }); if (recent.length > 8) recent.shift(); };
 
 const hits = new Map();
 function limited(ip) {
@@ -374,7 +374,9 @@ async function image(req, res) {
       });
     }
     if (!r.ok) {
-      note("image-" + r.status, r.status);
+      let em = "";
+      try { const ej = await r.json(); em = String((ej && ej.error && (ej.error.code || ej.error.message)) || "").replace(/sk-[\w-]+/g, "sk-***").slice(0, 160); } catch {}
+      note("image-" + r.status, r.status, em);
       imgCount = Math.max(0, imgCount - 1);
       return json(res, 502, { error: "image failed", status: r.status });
     }
@@ -390,6 +392,144 @@ async function image(req, res) {
   }
 }
 
+// ---------- საიტის ცოდნა: ცოცხალი index.html ----------
+// MOON AI საიტში ჩაშენებულია. კითხვისას სერვერი საიტის მიმდინარე index.html-ს კითხულობს (ცვლილების შემოწმება ETag-ით, ამიტომ იაფია),
+// ყოფს ნაწილებად, BM25-ით პოულობს კითხვასთან დაკავშირებულ ამონარიდებს და ხაზების ნომრებით აბრუნებს. 2 მბ-იან ფაილს მთლიანად მოდელს ვერ მივცემთ.
+const SITE_URL = process.env.SITE_URL || "https://moonfull4k.xyz/";
+let siteIdx = null, siteLoading = null;
+const BASE64_RE = /data:[a-z0-9\/+.\-]+;base64,[A-Za-z0-9+\/=]{60,}/gi;
+const tok = str => (String(str).toLowerCase().match(/[\p{L}\p{N}_$]{2,}/gu) || []).map(w => /[Ⴀ-ჿ]/.test(w) ? w.slice(0, 5) : w);
+
+function buildSite(html, etag) {
+  const raw = html.split(/\r?\n/);
+  const chunks = [];
+  let buf = [], len = 0, start = 1;
+  const flush = end => { if (buf.length) chunks.push({ s: start, e: end, text: buf.join("\n") }); buf = []; len = 0; };
+  for (let i = 0; i < raw.length; i++) {
+    let ln = raw[i].replace(BASE64_RE, "data:…base64…");
+    if (ln.length > 2500) ln = ln.slice(0, 2500) + " …[ხაზი მოკლებულია, სულ " + raw[i].length + " სიმბოლო]";
+    if (len + ln.length > 1800 && buf.length) { flush(i); start = i + 1; }
+    buf.push(ln); len += ln.length + 1;
+  }
+  flush(raw.length);
+  const df = new Map(); let total = 0;
+  for (const c of chunks) {
+    const tf = new Map();
+    for (const t of tok(c.text)) tf.set(t, (tf.get(t) || 0) + 1);
+    c.tf = tf; c.len = c.text.length; total += c.len;
+    for (const t of tf.keys()) df.set(t, (df.get(t) || 0) + 1);
+  }
+  const uniq = (re, g = 1) => [...new Set([...html.matchAll(re)].map(m => m[g]))];
+  const title = (/<title>([^<]*)<\/title>/i.exec(html) || [])[1] || "";
+  const views = uniq(/data-view="([\w-]+)"/g);
+  const nav = uniq(/data-hz-go="([\w-]+)"/g);
+  const hosts = uniq(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})/gi).filter(h => !/w3\.org|googleapis|gstatic|schema\.org|fonts\./i.test(h)).slice(0, 25);
+  const ids = uniq(/\bid="([A-Za-z][\w-]*(?:Panel|View|Modal|Box|Section))"/g).slice(0, 60);
+  const fns = uniq(/\bfunction\s+([A-Za-z_$][\w$]{3,})\s*\(/g).slice(0, 160);
+  const outline = [
+    "ფაილი: index.html, " + raw.length + " ხაზი, " + Math.round(html.length / 1024) + " კბ. სათაური: " + title,
+    "გვერდები (data-view): " + views.join(", "),
+    "ზედა ნავიგაცია (data-hz-go): " + nav.join(", "),
+    "გარე სერვისები: " + hosts.join(", "),
+    "მთავარი პანელები/ფანჯრები (id): " + ids.join(", "),
+    "ფუნქციები (ნაწილი): " + fns.join(", ")
+  ].join("\n").slice(0, 4200);
+  const hash = (etag || "").replace(/[^\w]/g, "").slice(-10) || String(html.length);
+  return { etag, hash, raw, chunks, df, avg: total / Math.max(1, chunks.length), outline, checked: Date.now(), at: new Date().toISOString() };
+}
+
+async function loadSite() {
+  if (siteIdx && Date.now() - siteIdx.checked < 4000) return siteIdx;
+  if (siteLoading) return siteLoading;
+  siteLoading = (async () => {
+    try {
+      const headers = {};
+      if (siteIdx && siteIdx.etag) headers["if-none-match"] = siteIdx.etag;
+      const r = await fetch(SITE_URL + (SITE_URL.includes("?") ? "&" : "?") + "_=" + Date.now(), { headers, signal: AbortSignal.timeout(25000) });
+      if (r.status === 304 && siteIdx) { siteIdx.checked = Date.now(); return siteIdx; }
+      if (!r.ok) throw new Error("site " + r.status);
+      const html = await r.text();
+      const etag = r.headers.get("etag") || "";
+      if (siteIdx && siteIdx.rawLen === html.length && siteIdx.sig === html.slice(-400)) { siteIdx.checked = Date.now(); return siteIdx; }
+      siteIdx = buildSite(html, etag);
+      siteIdx.rawLen = html.length; siteIdx.sig = html.slice(-400);
+      return siteIdx;
+    } catch (e) {
+      note("site", 0, String(e && e.message || e).slice(0, 80));
+      if (siteIdx) return siteIdx;
+      throw e;
+    } finally { siteLoading = null; }
+  })();
+  return siteLoading;
+}
+
+function siteSearch(idx, q, k = 8) {
+  const qt = [...new Set(tok(q))].slice(0, 40);
+  const N = idx.chunks.length, K1 = 1.4, B = 0.75;
+  const idents = (String(q).match(/[A-Za-z_$][\w$]{4,}/g) || []).slice(0, 8);
+  const scored = [];
+  for (const c of idx.chunks) {
+    let sc = 0;
+    for (const t of qt) {
+      const f = c.tf.get(t); if (!f) continue;
+      const d = idx.df.get(t) || 1;
+      const idf = Math.log(1 + (N - d + 0.5) / (d + 0.5));
+      sc += idf * (f * (K1 + 1)) / (f + K1 * (1 - B + B * c.len / idx.avg));
+    }
+    for (const id of idents) if (c.text.includes(id)) sc += 4;
+    if (sc > 0) scored.push({ c, sc });
+  }
+  scored.sort((a, b) => b.sc - a.sc);
+  return scored.slice(0, k).map(x => x.c).sort((a, b) => a.s - b.s);
+}
+
+function lineWindow(idx, n, r = 14) {
+  const a = Math.max(1, n - r), b = Math.min(idx.raw.length, n + r);
+  const out = [];
+  for (let i = a; i <= b; i++) {
+    let ln = idx.raw[i - 1].replace(BASE64_RE, "data:…base64…");
+    if (ln.length > 600) ln = ln.slice(0, 600) + " …";
+    out.push(i + ": " + ln);
+  }
+  return out.join("\n");
+}
+
+async function siteApi(req, res) {
+  cors(res, req);
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  if (limited(ip)) return json(res, 429, { error: "limited" });
+  let body;
+  try { body = JSON.parse(await readBody(req, 60_000)); }
+  catch { return json(res, 400, { error: "bad" }); }
+  const q = typeof body.q === "string" ? body.q.slice(0, 900) : "";
+  const errs = Array.isArray(body.errors) ? body.errors.slice(0, 5) : [];
+  try {
+    const idx = await loadSite();
+    const parts = [];
+    let seen = 0;
+    const errLines = [];
+    for (const e of errs) {
+      const ln = e && parseInt(e.line, 10);
+      if (ln > 0 && ln <= idx.raw.length && !errLines.includes(ln)) errLines.push(ln);
+    }
+    for (const ln of errLines.slice(0, 3)) {
+      const w = lineWindow(idx, ln);
+      parts.push("// შეცდომის ადგილი, ხაზი " + ln + " (ნომერი = ხაზის ნომერი index.html-ში)\n" + w);
+      seen += w.length;
+    }
+    const errText = errs.map(e => String((e && e.msg) || "")).join(" ").slice(0, 300);
+    const hits = siteSearch(idx, q + " " + errText, 8);
+    for (const c of hits) {
+      if (seen > 15000) break;
+      parts.push("// ხაზები " + c.s + "–" + c.e + "\n" + c.text);
+      seen += c.text.length;
+    }
+    return json(res, 200, { hash: idx.hash, lines: idx.raw.length, at: idx.at, outline: idx.outline, code: parts.join("\n\n-----\n\n") });
+  } catch (e) {
+    return json(res, 502, { error: "site unavailable" });
+  }
+}
+
 async function chat(req, res) {
   cors(res, req);
   const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
@@ -397,8 +537,9 @@ async function chat(req, res) {
   if (!HAS_ANY_KEY()) return json(res, 500, { error: "სერვისი ახლა მიუწვდომელია." });
 
   let body;
-  try { body = JSON.parse(await readBody(req)); }
+  try { body = JSON.parse(await readBody(req, 260_000)); }
   catch { return json(res, 400, { error: "არასწორი მოთხოვნა." }); }
+  const siteCtx = typeof body.site === "string" ? body.site.slice(0, 45000) : "";
 
   const messages = cleanMessages(body.messages);
   if (!messages) return json(res, 400, { error: "შეტყობინებები არასწორია." });
@@ -408,7 +549,7 @@ async function chat(req, res) {
 
   const url = (process.env.GEMINI_BASE || "https://generativelanguage.googleapis.com") + "/v1beta/models/" +
     encodeURIComponent(MODEL) + ":streamGenerateContent?alt=sse";
-  const system = systemPrompt(body.tz);
+  const system = systemPrompt(body.tz) + (siteCtx ? "\n\n" + siteCtx : "");
   const contents = messages.map(m => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: [{ text: m.content }]
@@ -464,7 +605,7 @@ async function chat(req, res) {
   }
 
   if (!opened && !ctrl.signal.aborted) {
-    const alt = await openAiChain(fallbackSystem(body.tz), messages, ctrl.signal);
+    const alt = await openAiChain(fallbackSystem(body.tz) + (siteCtx ? "\n\n" + siteCtx : ""), messages, ctrl.signal);
     if (alt && alt.canned) {
       res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", "x-accel-buffering": "no" });
       res.write("data: " + JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: alt.canned } }) + "\n\n");
@@ -564,17 +705,18 @@ const INDEX = path.join(__dirname, "Index.html");
 const server = http.createServer(async (req, res) => {
   const url = (req.url || "/").split("?")[0];
 
-  if (req.method === "OPTIONS" && (url === "/api/chat" || url === "/api/image")) {
+  if (req.method === "OPTIONS" && (url === "/api/chat" || url === "/api/image" || url === "/api/site")) {
     cors(res, req);
     res.writeHead(204);
     return res.end();
   }
   if (req.method === "POST" && url === "/api/chat") return chat(req, res);
   if (req.method === "POST" && url === "/api/image") return image(req, res);
+  if (req.method === "POST" && url === "/api/site") return siteApi(req, res);
 
   if (req.method === "GET" && url === "/health") {
-    return json(res, 200, { ok: true, version: "fallback-10-images", search: !!OLLAMA_KEY, lastFallback: lastUsed,
-      keys: { gemini: !!API_KEY, openai: !!OPENAI_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
+    return json(res, 200, { ok: true, version: "fallback-12-site", search: !!OLLAMA_KEY, lastFallback: lastUsed,
+      site: siteIdx ? { hash: siteIdx.hash, lines: siteIdx.raw.length, at: siteIdx.at } : null, siteUrl: SITE_URL, keys: { gemini: !!API_KEY, openai: !!OPENAI_KEY, groq: !!GROQ_KEY, ollama: !!OLLAMA_URL, openrouter: !!OPENROUTER_KEY }, recentErrors: recent });
   }
 
   if (req.method === "GET" && (url === "/" || url === "/Index.html" || url === "/index.html")) {
